@@ -1,0 +1,43 @@
+[package]
+name = "rust-basino"
+version = "0.1.0"
+edition = "2021"
+authors = ["Joshua Gerrish <jgerrish@gmail.com>"]
+description = "A crate to test the basino BASIC AVR assembly project"
+keywords = ["assembly", "avr", "basic", "data structures", "stack"]
+readme = "README.md"
+repository = "https://github.com/jgerrish/basino"
+homepage = "https://github.com/jgerrish/basino"
+license = "MIT"
+
+[dependencies]
+embedded-hal = "0.2.7"
+panic-halt = "0.2.0"
+# simavr-sim = "0.1"
+ufmt = "0.2"
+
+[dependencies.arduino-hal]
+version = "0.1"
+features = ["arduino-uno"]
+git = "https://github.com/jgerrish/avr-hal"
+
+[dependencies.avr-device]
+version = "0.5"
+features = ["atmega328p"]
+
+# Configure the build for minimal size - AVRs have very little program memory
+[profile.dev]
+panic = "abort"
+lto = true
+opt-level = "s"
+
+[profile.release]
+panic = "abort"
+codegen-units = 1
+debug = true
+lto = true
+opt-level = "s"
+
+[features]
+default = []
+features = []

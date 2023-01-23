@@ -1,0 +1,23 @@
+rustflags = [
+  # if you need to link to pre-compiled C libraries provided by a C toolchain
+  # use GCC as the linker by commenting out both lines above and then
+  # uncommenting the three lines below
+  # "-C", "linker=avr-gcc",
+  # "-C", "link-arg=-Wl,-Tlink.x",
+  # "-C", "link-arg=-nostartfiles",
+  "-C", "linker=avr-gcc",
+  "-C", "link-arg=-Wl,-L../basino",
+]
+
+[build]
+target = "avr-specs/avr-atmega328p.json"
+
+[target.'cfg(target_arch = "avr")']
+# runner = "ravedude uno -cb 57600"
+runner = "run_avr --mcu atmega328p"
+# runner = "run_avr --mcu atmega328p"
+# runner = "qemu-system-avr -s -S -M uno -nographic -serial mon:stdio -bios "
+# runner = "qemu-system-avr -M uno -nographic -serial mon:stdio -bios "
+
+[unstable]
+build-std = ["core"]
