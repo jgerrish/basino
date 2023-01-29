@@ -118,7 +118,7 @@ basino_stack_pop:
 
 	;; Copy argument one (r24 and r25) to another register pair
 	;; So we can return a result and use the argument
-	movw r18, r24		; This copies over r24:45 -> r18:r19
+	movw r18, r24		; This copies over r25:24 -> r19:r18
 
 	ldi XL, lo8(basino_stack_top)
 	ldi XH, hi8(basino_stack_top)
@@ -180,7 +180,7 @@ basino_stack_pop_underflow:
 
 basino_stack_pop_end:
 	;; Set the return result (the first parameter)
-	movw X, r18		; This copies r18:r19 to X
+	movw X, r18		; This copies r19:r18 to X
 	st X, r30
 
 	pop r29
