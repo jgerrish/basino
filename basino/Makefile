@@ -5,7 +5,7 @@ LD=avr-ld
 
 # Specifying a memory map here is critical to get code working with Rust
 CFLAGS=-mmcu=atmega328p -Wall -Werror -g -O0 -T memory.x
-LDFLAGS=-g -mavr5 -T memory.x
+LDFLAGS=-g -mavr5 -T memory.x -r
 # LDFLAGS=-g -mavr5
 
 SRCS = stack.S basino.S

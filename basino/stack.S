@@ -150,7 +150,7 @@ basino_stack_pop_low_byte_equal:
 	rjmp basino_stack_pop_do_pop
 
 basino_stack_pop_do_pop:
-	;; Do the actual push of a value
+	;; Do the actual pop of a value
 	;; The byte to store is in the first parameter, r24
 	;; In particular, AVR supports pre-decrement and post-increment
 	;; We have a downward-growing stack, so the stack "top" should start one above
