@@ -41,7 +41,7 @@ SECTIONS
   /* The Atmega 328p has 2KB of SRAM.  Start this at 0x300 (512 bytes of memory). */
   /* This will need to be adjusted.
   /* . = 0x00800300; */
-  .ram2bss : { *(.ram2bss) } > ESRAM
+  .ram2bss : { *(.ram2bss) } > XSRAM
   /* . = 0x00800300; */
-  .hisram : { *(.hisram) } > ESRAM
+  .hisram : { *(.hisram) } > XSRAM
 }

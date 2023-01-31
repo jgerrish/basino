@@ -31,7 +31,7 @@ pub struct Stack {
     /// The actual stack array which holds the data
     pub stack: [u8; 128],
     /// The address of the top of the stack
-    pub stack_top_sentinel: u8,
+    pub stack_top_sentinel: *mut u8,
 }
 
 /// Dummy location needed because of DEVICE_PERIPHERALS
@@ -55,7 +55,7 @@ pub static mut DEVICE_PERIPHERALS_SPACE: u8 = 0;
 #[link_section = ".ram2bss"]
 pub static mut BASINO_STACK: Stack = Stack {
     stack: [0; 128],
-    stack_top_sentinel: 0,
+    stack_top_sentinel: 0 as *mut u8,
 };
 
 #[link(name = "basino")]
@@ -64,13 +64,13 @@ extern "C" {
     pub fn basino_add(a: u8, b: u8) -> u16;
 
     /// Initialize the stack
-    pub fn basino_stack_init(memory_start: u16, stack_bottom: u16, stack_size: u8) -> u8;
+    pub fn basino_stack_init(memory_start: *mut u8, stack_bottom: *mut u8, stack_size: u8) -> u8;
 
     /// Push a value onto the stack
     pub fn basino_stack_push(value: u8) -> u8;
 
     /// Pop a value from the stack
-    pub fn basino_stack_pop(result: &u8) -> u8;
+    pub fn basino_stack_pop(result: *mut u8) -> u8;
 
     /// Get the address of the bottom of the stack
     pub fn basino_get_basino_stack_bottom() -> u16;

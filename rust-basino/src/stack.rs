@@ -38,9 +38,7 @@ impl StackImpl for crate::Stack {
     ) -> Result<(), u8> {
         let res = stack_init_safe(writer);
         ufmt::uwriteln!(writer, "basino_stack_init result: {:?}\r", res).unwrap();
-        if let Err(e) = res {
-            return Err(e);
-        }
+        res?;
 
         let res = unsafe { basino_get_basino_stack_bottom() };
         ufmt::uwriteln!(writer, "basino_get_basino_stack_bottom result: {}\r", res).unwrap();
@@ -63,8 +61,8 @@ impl StackImpl for crate::Stack {
     }
 
     fn pop(&self) -> Result<u8, u8> {
-        let result: u8 = 0;
-        let res = unsafe { basino_stack_pop(&result) };
+        let mut result: u8 = 0;
+        let res = unsafe { basino_stack_pop(&mut result) };
         match result {
             0 => Ok(res),
             _ => Err(result),
@@ -85,22 +83,27 @@ impl StackImpl for crate::Stack {
 pub fn stack_init_safe(
     writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
 ) -> Result<(), u8> {
-    let stack_top_addr: usize = unsafe {
+    let stack_top_ptr: *mut u8 = unsafe {
         // Set the stack top address to the address + 1
         // There is now a basino_address_add function that can perform the addition
         // in assembly.  It should be moved there.
-        BASINO_STACK.stack.as_ptr() as usize + BASINO_STACK.stack.len() + 1
+        (BASINO_STACK.stack.as_mut_ptr() as usize + BASINO_STACK.stack.len() + 1) as *mut u8
     };
 
     let stack_size: usize = unsafe { BASINO_STACK.stack.len() };
-    let stack_bottom: usize = stack_top_addr - stack_size;
+    let stack_bottom: usize = stack_top_ptr as usize - stack_size;
 
-    ufmt::uwriteln!(writer, "stack_top_addr: {}\r", stack_top_addr).unwrap();
+    ufmt::uwriteln!(writer, "stack_top_ptr: {}\r", stack_top_ptr as usize).unwrap();
     ufmt::uwriteln!(writer, "stack_size: {}\r", stack_size).unwrap();
     ufmt::uwriteln!(writer, "stack_bottom: {}\r", stack_bottom).unwrap();
 
-    let res =
-        unsafe { basino_stack_init(stack_top_addr as u16, stack_bottom as u16, stack_size as u8) };
+    let res = unsafe {
+        basino_stack_init(
+            stack_top_ptr as *mut u8,
+            stack_bottom as *mut u8,
+            stack_size as u8,
+        )
+    };
 
     match res {
         0 => Ok(()),
