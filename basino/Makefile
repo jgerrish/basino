@@ -4,22 +4,24 @@ AR=avr-ar
 LD=avr-ld
 
 # Specifying a memory map here is critical to get code working with Rust
-CFLAGS=-mmcu=atmega328p -Wall -Werror -g -O0 -T memory.x
+CFLAGS=-mmcu=atmega328p -Wall -Werror -g -O0 -T memory.x -r
 LDFLAGS=-g -mavr5 -T memory.x -r
+ARFLAGS=rcs --target elf32-avr
 # LDFLAGS=-g -mavr5
 
-SRCS = stack.S basino.S
+SRCS = stack.S queue.S basino.S
 OBJS = $(SRCS:.S=-basino.o)
 
-PREFIXES=stack basino
+PREFIXES=stack queue basino
 
 all: libbasino.a
 
 clean:
-	rm -f basino-*.o libbasino*.a libbasino*.so stack*.o
+	rm -f basino-*.o libbasino*.a libbasino*.so stack*.o queue*.o
 
 %-basino.o: %.S
 	$(CC) $(CFLAGS) -o $@ -c $<
 
 libbasino.a: $(OBJS)
-	$(LD) $(LDFLAGS) -static stack-basino.o basino-basino.o -o libbasino.a
+	$(LD) $(LDFLAGS) -static stack-basino.o queue-basino.o basino-basino.o -o libbasino.a
+#	$(AR) $(ARFLAGS) stack-basino.o queue-basino.o basino-basino.o libbasino.a

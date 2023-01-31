@@ -300,7 +300,7 @@ pub mod tests {
 
         // Now pop all the values
         for i in 0..stack.stack.len() {
-            let n = 127 - (i % 256) as u8;
+            let n = (stack.stack.len() - 1) as u8 - (i % 256) as u8;
             let res = stack.pop();
 
             match res {

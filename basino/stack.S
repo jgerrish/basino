@@ -10,7 +10,7 @@
 ;; We use a sentinel value at the top to do efficient equality
 ;; comparisons.
 
-.set BASINO_STACK_SIZE,128
+.set BASINO_STACK_SIZE,32
 
 .text
 
