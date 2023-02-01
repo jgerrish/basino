@@ -15,7 +15,7 @@ fn main() -> ! {
 
     let mut serial = arduino_hal::default_serial!(dp, pins, 57600);
 
-    // rust_basino::stack::tests::run_tests(&mut serial);
+    rust_basino::stack::tests::run_tests(&mut serial);
     rust_basino::queue::tests::run_tests(&mut serial);
 
     loop {
