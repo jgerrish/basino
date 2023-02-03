@@ -3,6 +3,7 @@
 #![no_std]
 #![no_main]
 #![feature(abi_avr_interrupt)]
+#![feature(ptr_from_ref)]
 
 /// Error data types
 pub mod error;
@@ -27,14 +28,19 @@ pub mod stack;
 ///
 /// The stack_top_sentinel is located at top of the stack, it contains
 /// the address of the top and provides padding for the stack.
-#[repr(packed)]
+#[repr(C)]
 pub struct Stack {
-    // The address of the bottom of the stack
-    // pub stack_bottom_sentinel: u8,
     /// The actual stack array which holds the data
-    pub stack: [u8; 32],
-    /// The address of the top of the stack
-    pub stack_top_sentinel: *mut u8,
+    pub data: *mut u8,
+
+    /// A sentinel to make comparisons against the top simpler
+    pub top_sentinel: *mut u8,
+
+    /// The stack bottom
+    pub bottom: *mut u8,
+
+    /// The stack top
+    pub top: *mut u8,
 }
 
 /// The Queue data structure
@@ -76,10 +82,21 @@ pub static mut DEVICE_PERIPHERALS_SPACE: u8 = 0;
 // memory.x linker script
 /// The stack object we pass into the C / assembly code to store data
 #[link_section = ".ram2bss"]
-pub static mut BASINO_STACK: Stack = Stack {
-    stack: [0; 32],
-    stack_top_sentinel: 0 as *mut u8,
-};
+pub static mut BASINO_STACK: Option<Stack> = None;
+
+/// The stack buffer that stores the data C / assembly code to store data
+/// The length of the stack is the length of this buffer minus one.
+/// An additional byte is used as a top sentinel
+///
+/// There are no references to memory alignment requirements in the
+/// Atmel data sheets DS40002061B (ATmega48A/PA/88A/PA/168A/PA/328/P)
+/// and DS40002198B (AVR® Instruction Set Manual)
+///
+/// Several unofficial references online make the point that 16-bit
+/// memory accesses are composed of two 8-bit accesses.  Even still, we'll
+/// align two bytes here.  The extra byte is assumed unneeded.
+#[link_section = ".ram2bss"]
+pub static mut BASINO_STACK_BUFFER: [u8; 33] = [0; 33];
 
 /// The queue object we pass into the C / assembly code to store data
 #[link_section = ".ram2bss"]
@@ -97,26 +114,35 @@ extern "C" {
     /// Add two 8-bit unsigned integers together
     pub fn basino_add(a: u8, b: u8) -> u16;
 
+    // Stack functions
+
     /// Initialize the stack
-    pub fn basino_stack_init(memory_start: *mut u8, stack_bottom: *mut u8, stack_size: u8) -> u8;
+    // The top_sentinel should probably be calculated from the stack top in the
+    // basino_stack_init code
+    pub fn basino_stack_init(
+        stack: *mut Stack,
+        top: *mut u8,
+        bottom: *mut u8,
+        top_sentinel: *mut u8,
+    );
 
     /// Push a value onto the stack
-    pub fn basino_stack_push(value: u8) -> u8;
+    pub fn basino_stack_push(stack: *const Stack, value: u8) -> u8;
 
     /// Pop a value from the stack
-    pub fn basino_stack_pop(result: *mut u8) -> u8;
+    pub fn basino_stack_pop(stack: *const Stack, result: *mut u8) -> u8;
 
     /// Get the address of the bottom of the stack
-    pub fn basino_get_basino_stack_bottom() -> u16;
+    pub fn basino_get_basino_stack_bottom(stack: *const Stack) -> *const u8;
 
     /// Get the address of the top of the stack
-    pub fn basino_get_basino_stack_top() -> u16;
+    pub fn basino_get_basino_stack_top(stack: *const Stack) -> *const u8;
 
-    /// Get the address of the top of the stack sentinel
-    pub fn basino_get_basino_stack_top_sentinel() -> u16;
+    /// Get the address of the top of the stack sentinitel
+    pub fn basino_get_basino_stack_top_sentinel(stack: *const Stack) -> *const u8;
 
-    /// Get the stack size
-    pub fn basino_get_basino_stack_size() -> u8;
+    // /// Get the stack size
+    // pub fn basino_get_basino_stack_size(stack: *const Stack) -> u;
 
     /// Initialize the queue
     pub fn basino_queue_init(start: *mut u8, end: *mut u8) -> u8;

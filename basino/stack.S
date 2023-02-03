@@ -9,8 +9,40 @@
 ;; the true top.
 ;; We use a sentinel value at the top to do efficient equality
 ;; comparisons.
-
-.set BASINO_STACK_SIZE,32
+;;
+;; Most of the stack subroutines in this file assume that a stack structure has
+;; already been created and allocated.  The subroutines do not own the stack structure,
+;; The caller is responsible for creating and destroying that object.
+;; There is an initialization function that can reset the stack to a new state, but
+;; it doesn't allocate or own the object.
+;;
+;; AVR recommendations use variables instead of global registers.
+;;
+;; Below is a visual representation of the stack and pointers.
+;; The size of the stack is four, data can be store in indices 0, 1, 2
+;; and 3.
+;; Location 4 is allocated and used as a sentinel top but not used for
+;; data.
+;;
+;;     0   1   2   3   4
+;;   +-------------------+
+;;   |   |   |   |   |   |
+;;   +-------------------+
+;;     ^              ^ ^
+;;     |              |  \
+;;  bottom          top   -- sentinel top
+;;
+;;
+;; After one push:
+;;
+;;     0   1   2   3   4
+;;   +-------------------+
+;;   |   |   |   | E |   |
+;;   +-------------------+
+;;     ^           ^    ^
+;;     |           |     \
+;;  bottom        top     -- sentinel top
+;;
 
 .text
 
@@ -18,15 +50,29 @@
 
 .globl basino_stack_pop_low_byte_equal, basino_stack_pop_do_pop, basino_stack_pop_end, basino_stack_pop_underflow
 
+;; These are defines that are used to calculate offsets into the stack
+;; data structure.
+.set BASINO_STACK_STACK_DATA_OFFSET, 0
+.set BASINO_STACK_STACK_TOP_SENTINEL_OFFSET, 2
+.set BASINO_STACK_STACK_BOTTOM_OFFSET, 4
+.set BASINO_STACK_STACK_TOP_OFFSET, 6
+
 ;; Store the value onto the stack and decrement the top
+;;
+;; Parameters:
+;; This function has one unsigned 16-bit parameters and one unsigned 8-bit parameter:
+;;   parameter 1:
+;;     Parameter one is a pointer to the start of the stack structure.
+;;     It is placed in r24 and r25.
+;;
+;;   parameter 2:
+;;     The value to push
+;;
 ;; On success zero is returned.
-;; On failure, one is returned.
-;;
-;; AVR recommendations use variables instead of global registers.
-;;
-;; The LD instruction allows automatic post-incrementing or post-decrementing
-;; of the X-Pointer Register.
+;; On failure one is returned.
 basino_stack_push:
+	push r16
+	push r17
 	push r20
 	push r21
 	push r26
@@ -34,21 +80,21 @@ basino_stack_push:
 	push r28
 	push r29
 
-	ldi XL, lo8(basino_stack_top)
-	ldi XH, hi8(basino_stack_top)
-	;; Back up the index register so we can decrement the top later
-	ld r28, X+
-	ld r29, X
+	;; Set up the stack structure
+	movw Y, r24		; Copy r25:r24 -> Y
 
-	ldi XL, lo8(basino_stack_bottom)
-	ldi XH, hi8(basino_stack_bottom)
-	ld r20, X+		; low byte
-	ld r21, X		; high byte
+	;; Back up the index register so we can decrement the top later
+	ldd r16, Y+BASINO_STACK_STACK_TOP_OFFSET
+	ldd r17, Y+BASINO_STACK_STACK_TOP_OFFSET+1
+
+	ldd r20, Y+BASINO_STACK_STACK_BOTTOM_OFFSET
+	ldd r21, Y+BASINO_STACK_STACK_BOTTOM_OFFSET+1
+
 	;; Test that we're not at the bottom of the stack
 	;; Order of comparisons can actually matter here.
 	;; Comparing the low-order byte first lets us avoid an
 	;; unnecessary compare most of the time.
-	cp r28, r20
+	cp r16, r20
 	breq basino_stack_push_low_byte_equal
 	;; We can always do an exact check, we shouldn't have to worry about going
 	;; beyond the bottom.
@@ -56,31 +102,34 @@ basino_stack_push:
 
 basino_stack_push_low_byte_equal:
 	;; Compare the high-order byte now
-	cp r29, r21
+	cp r17, r21
 	breq basino_stack_push_stack_overflow
 	rjmp basino_stack_push_do_push
 
 basino_stack_push_do_push:
 	;; Do the actual push of a value
-	;; The byte to store is in the first parameter, r24
+	;; The byte to store is in the second parameter, r22
 	;; In particular, AVR supports pre-decrement and post-increment
 	;; We have a downward-growing stack, so the stack "top" should start one above
 	;; the true top.
-	st -Y, r24
-	;; Store the new stack top
-	ldi XL, lo8(basino_stack_top)
-	ldi XH, hi8(basino_stack_top)
+	ldd r26, Y+BASINO_STACK_STACK_TOP_OFFSET
+	ldd r27, Y+BASINO_STACK_STACK_TOP_OFFSET+1
 
-	st X+, r28
-	st X, r29
+	st -X, r22
+
+	;; Store the new stack top
+	std Y+BASINO_STACK_STACK_TOP_OFFSET, r26
+	std Y+BASINO_STACK_STACK_TOP_OFFSET+1, r27
 
 	;; Return a successful result
+	ldi r25, 0
 	ldi r24, 0
 	rjmp basino_stack_push_end
 
 basino_stack_push_stack_overflow:
 	;; Handle the case where we're at the bottom of the stack
 	;; Return an unsuccessful result
+	ldi r25, 0
 	ldi r24, 1
 	rjmp basino_stack_push_end
 
@@ -91,44 +140,53 @@ basino_stack_push_end:
 	pop r26
 	pop r21
 	pop r20
+	pop r17
+	pop r16
 
 	ret
 
-;; Load the value on the stack into the register, and increment the top afterwards
+;; Pop a value from the stack, and increment the top afterwards
 ;;
-;; The API of this is: pop expects a single parameter,
-;; the address of the data to return.  It changes the value of this parameter
-;; and returns a value of zero if it was successful.
+;; The API of this is: pop expects two parameters,
+;; A pointer to the stack and a pointer to a return result variable.
+;; It changes the value of this parameter to zero if it was
+;; successful.
 ;;
-;; If there is an error trying to pop a value, the parameter value is
+;; If there is an error trying to pop a value, the return value is
 ;; undefined and the error code is set to a non-zero value.
 ;;
-;; It doesn't use a global errno like classic UNIX and POSIX
-;; applications.
+;; Parameters:
+;; This function has one unsigned 16-bit parameters and one unsigned 8-bit parameter:
+;;   parameter 1:
+;;     Parameter one is a pointer to the start of the stack structure.
+;;     It is placed in r24 and r25.
 ;;
-;; The LD instruction allows automatic post-incrementing or post-decrementing
-;; of the X-Pointer Register.
+;;   parameter 2:
+;;     A pointer to a result code variable.
+;;
 basino_stack_pop:
+	push r16
+	push r17
 	push r20
 	push r21
 	push r26
 	push r27
 	push r28
 	push r29
+	push r30
 
-	;; Copy argument one (r24 and r25) to another register pair
+	;; Set up the stack structure
+	movw Y, r24		; Copy r25:r24 -> Y
+
+	;; Copy argument two (r22 and r23) to another register pair
 	;; So we can return a result and use the argument
-	movw r18, r24		; This copies over r25:24 -> r19:r18
+	movw r18, r22		; This copies over r23:22 -> r19:r18
 
-	ldi XL, lo8(basino_stack_top)
-	ldi XH, hi8(basino_stack_top)
-	ld r28, X+
-	ld r29, X
+	ldd r16, Y+BASINO_STACK_STACK_TOP_OFFSET
+	ldd r17, Y+BASINO_STACK_STACK_TOP_OFFSET+1
 
-	ldi XL, lo8(basino_stack_top_sentinel)
-	ldi XH, hi8(basino_stack_top_sentinel)
-	ld r20, X+		; low byte
-	ld r21, X		; high byte
+	ldd r20, Y+BASINO_STACK_STACK_TOP_SENTINEL_OFFSET
+	ldd r21, Y+BASINO_STACK_STACK_TOP_SENTINEL_OFFSET+1
 
 	;; Test that we're not at the bottom of the stack
 	;; Order of comparisons can actually matter here.
@@ -137,7 +195,7 @@ basino_stack_pop:
 	;; One byte for a sentinel isn't that expensive, given the
 	;; number of required stacks is small, for the BASIC
 	;; use-case: so one sentinel.
-	cp r28, r20
+	cp r16, r20
 	breq basino_stack_pop_low_byte_equal
 	;; We can always do an exact check, we shouldn't have to worry about
 	;; getting out-of-sync.
@@ -145,7 +203,7 @@ basino_stack_pop:
 
 basino_stack_pop_low_byte_equal:
 	;; Compare the high-order byte now
-	cp r29, r21
+	cp r17, r21
 	breq basino_stack_pop_underflow
 	rjmp basino_stack_pop_do_pop
 
@@ -158,13 +216,14 @@ basino_stack_pop_do_pop:
 	;; We also need to properly test and branch for that,
 	;; either with a dummy space / sentinel (or stack_size - 1) (low-cost options),
 	;; or additional non-equality checks.
-	ld r24, Y+
+	ldd r26, Y+BASINO_STACK_STACK_TOP_OFFSET
+	ldd r27, Y+BASINO_STACK_STACK_TOP_OFFSET+1
+
+	ld r24, X+
 
 	;; Store the new stack top
-	ldi XL, lo8(basino_stack_top)
-	ldi XH, hi8(basino_stack_top)
-	st X+, r28
-	st X, r29
+	std Y+BASINO_STACK_STACK_TOP_OFFSET, r26
+	std Y+BASINO_STACK_STACK_TOP_OFFSET+1, r27
 
 	;; Return a successful result in the first parameter
 	ldi r30, 0
@@ -183,14 +242,18 @@ basino_stack_pop_end:
 	movw X, r18		; This copies r19:r18 to X
 	st X, r30
 
+	pop r30
 	pop r29
 	pop r28
 	pop r27
 	pop r26
 	pop r21
 	pop r20
+	pop r17
+	pop r16
 
 	ret
+
 
 ;; Initialize the stack variables
 ;;
@@ -203,13 +266,23 @@ basino_stack_pop_end:
 ;; The Z register is composed of R30 (low) and R31 (high)
 ;; R2-R17 are also call-saved
 ;; Each register is also mapped to the first 32 locations in the data space,
+
+;; Parameters:
+;; This function has three unsigned 16-bit parameters, and one unsigned 8-bit parameter:
+;;   parameter 1:
+;;     Parameter one is a pointer to the start of the stack structure.
+;;     It is placed in r24 and r25.
 ;;
-;; This function has two unsigned 16-bit parameters, and one unsigned 8-bit parameter:
-;; argument one is the stack top address, an unsigned 16-bit integer, in r24 and r25
-;;   The stack top starts at one more than the length of the stack, it
-;;   points to a sentinel.
-;; argument two is the stack bottom, an unsigned 16-bit integer, in r22 and r23
-;; argument three is the stack size, an unsigned 8-bit integer, in r20
+;;   parameter 2:
+;;     argument one is the stack top address, an unsigned 16-bit integer, in r22 and r23
+;;     The stack top starts at one more than the length of the stack, it
+;;     points to a sentinel.
+;;
+;;   parameter 3:
+;;     argument three is the stack bottom, an unsigned 16-bit integer, in r20 and r21
+;;
+;;   parameter 4:
+;;     argument four is the stack top sentinel, an unsigned 16-bit integer, in r18 and r19
 basino_stack_init:
 	push r20
 	push r21
@@ -218,35 +291,18 @@ basino_stack_init:
 	push r28
 	push r29
 
-	ldi XL, lo8(basino_stack_top)
-	ldi XH, hi8(basino_stack_top)
+	movw Y, r24		; Copy r25:r24 -> Y
 
-	;; With st, the first operand is the address to store the data in
-	st X+, r24
-	st X, r25
+	;; Note: This doesn't do post-increment or pre-decrement on
+	;; the pointer.
+	std Y+BASINO_STACK_STACK_TOP_OFFSET, r22
+	std Y+BASINO_STACK_STACK_TOP_OFFSET+1, r23
 
-	;; Set the stack top sentinel address too
-	ldi XL, lo8(basino_stack_top_sentinel)
-	ldi XH, hi8(basino_stack_top_sentinel)
+	std Y+BASINO_STACK_STACK_BOTTOM_OFFSET, r20
+	std Y+BASINO_STACK_STACK_BOTTOM_OFFSET+1, r21
 
-	;; With st, the first operand is the address to store the data in
-	st X+, r24
-	st X, r25
-
-	;; Set the basino_stack_bottom variable to the maximum bottom of the stack
-	ldi XL, lo8(basino_stack_bottom)
-	ldi XH, hi8(basino_stack_bottom)
-
-	st X+, r22
-	st X, r23
-
-	;; Set the basino_stack_size variable to the stack size
-	ldi XL, lo8(basino_stack_size)
-	ldi XH, hi8(basino_stack_size)
-
-	st X, r20
-
-	ldi r24, 0
+	std Y+BASINO_STACK_STACK_TOP_SENTINEL_OFFSET, r18
+	std Y+BASINO_STACK_STACK_TOP_SENTINEL_OFFSET+1, r19
 
 	pop r29
 	pop r28
@@ -257,64 +313,85 @@ basino_stack_init:
 
 	ret
 
-.globl basino_get_stack_bottom
-
-basino_get_stack_bottom:
-	ret
-
 ;; Variable printing functions
-.globl basino_get_basino_stack_bottom, basino_get_basino_stack_top, basino_get_basino_stack_top_sentinel, basino_get_basino_stack_size, 
+.globl basino_get_basino_stack_bottom, basino_get_basino_stack_top, basino_get_basino_stack_top_sentinel
 
 ;; Return an unsigned short integer (two bytes) with the current stack bottom
 basino_get_basino_stack_bottom:
-	ldi XL, lo8(basino_stack_bottom)
-	ldi XH, hi8(basino_stack_bottom)
-	ld r24, X+		; low byte in short return
-	ld r25, X		; high byte in short return
+	push r26
+	push r27
+	push r28
+	push r29
+
+	movw Y, r24		; Copy r25:r24 -> Y
+
+	ldd r24, Y+BASINO_STACK_STACK_BOTTOM_OFFSET
+	ldd r25, Y+BASINO_STACK_STACK_BOTTOM_OFFSET+1
+
+	pop r29
+	pop r28
+	pop r27
+	pop r26
 
 	ret
 
 ;; Return an unsigned short integer (two bytes) with the current basino_stack_top
 basino_get_basino_stack_top:
-	ldi XL, lo8(basino_stack_top)
-	ldi XH, hi8(basino_stack_top)
-	ld r24, X+
-	ld r25, X
+	push r26
+	push r27
+	push r28
+	push r29
+
+	movw Y, r24		; Copy r25:r24 -> Y
+
+	ldd r24, Y+BASINO_STACK_STACK_TOP_OFFSET
+	ldd r25, Y+BASINO_STACK_STACK_TOP_OFFSET+1
+
+	pop r29
+	pop r28
+	pop r27
+	pop r26
 
 	ret
 
 ;; Return an unsigned short integer (two bytes) with the current stack top sentinel
 basino_get_basino_stack_top_sentinel:
-	ldi XL, lo8(basino_stack_top_sentinel)
-	ldi XH, hi8(basino_stack_top_sentinel)
-	ld r24, X+
-	ld r25, X
+	push r26
+	push r27
+	push r28
+	push r29
+
+	movw Y, r24		; Copy r25:r24 -> Y
+
+	ldd r24, Y+BASINO_STACK_STACK_TOP_SENTINEL_OFFSET
+	ldd r25, Y+BASINO_STACK_STACK_TOP_SENTINEL_OFFSET+1
+
+	pop r29
+	pop r28
+	pop r27
+	pop r26
 
 	ret
 
-;; Return an unsigned char (one byte) with the current stack size
-basino_get_basino_stack_size:
-	ldi XL, lo8(basino_stack_size)
-	ldi XH, hi8(basino_stack_size)
-	ld r24, X
+;; Return an unsigned short (two bytes) with the current stack size
+;;
+;; Removed in latest version
+;;
+;; This can be re-implemented with basino_get_basino_stack_top_sentienl
+;; and basino_get_basino_bottom.
+;;
+;; basino_get_basino_stack_size:
+;; 	push r28
+;; 	push r29
 
-	ret
+;; 	movw Y, r24		; Copy r25:r24 -> Y
 
-;; stack metadata and variables
+;; 	ldi r25, 0
+;; 	ldd r24, Y+BASINO_STACK_STACK_SIZE_OFFSET
 
-.section .data
+;; 	pop r29
+;; 	pop r28
 
-.globl basino_stack_size, basino_stack_bottom, basino_stack_top, basino_stack, basino_stack_maximum_top
+;; 	ret
 
-basino_stack:
-	.space BASINO_STACK_SIZE
-basino_stack_maximum_top:
-basino_stack_top_sentinel:
-	.short 0
 
-basino_stack_size:
-	.byte 0
-basino_stack_bottom:
-	.short 0
-basino_stack_top:
-	.short 0

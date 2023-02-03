@@ -11,9 +11,12 @@ import basino
 # Very cool language feature.  Same with vars and a lot of other
 # statement types.
 type
-  Stack {.packed.} = object
-    stack: array[0..127, uint8]
-    stack_top_sentinel: uint8
+  Stack* {.packed.} = object
+    # Allocate one extra array entry for the top sentinel
+    data*: ptr UncheckedArray[uint8]
+    top_sentinel*: ptr uint8
+    bottom*: ptr uint8
+    top*: ptr uint8
 
 # Concatenate and send an arbitrary number of strings on the serial
 # channel.
@@ -36,72 +39,80 @@ proc send_strings(a: varargs[string]) =
 
   Serial.send cstring(tmp_str)
 
+# Print out a test result
+# TODO: This should be moved over to testament
+proc send_test_result(test_result: bool, a: varargs[string]) =
+  var tmp_str = ""
+
+  if test_result:
+    tmp_str &= "SUCCESS "
+  else:
+    tmp_str &= "FAILURE "
+
+  for s in items(a):
+    tmp_str &= s
+
+  Serial.send cstring(tmp_str)
+
+
 var stack = Stack()
+var data: array[0..32, uint8]
+stack.data = cast[ptr UncheckedArray[uint8]](data.unsafeAddr)
 
 Serial.init(9600.Hz)
-Serial.send "Hello world\r\n"
 
-Serial.send p"Adding 3 + 5: "
-let res = basino_add(3, 5)
-send_strings($res, "\r\n")
-
-# Test the size of the stack
-Serial.send p"Stack size: "
-let stack_size = stack.stack.len()
-var t_str = $stack_size
-Serial.send cstring(t_str)
-Serial.send "\r\n"
+let res_add = basino_add(3, 5)
+send_test_result(res_add == 8, "add of 3 + 5 should equal 8\r\n")
 
 # Example of using a ProgmemString
 # ProgmemStrings are stored in program memory, so take up less of the
 # SRAM on limited memory AVR devices.
-Serial.send p"Address adding 32767 + 32780"
 let address_add_result_1 = basino_address_add(32767, 32780'u16)
-send_strings(", result: ", $address_add_result_1, "\r\n")
+send_test_result(address_add_result_1.kind == rkFailure, "address add with carry should fail\r\n")
 
-Serial.send p"Address adding 16383 + 16383"
 let address_add_result_2 = basino_address_add(16383, 16383)
-send_strings(", result: ", $address_add_result_2, "\r\n")
+send_test_result(address_add_result_2.kind == rkSuccess and address_add_result_2.val == 32766,
+                 "address add without carry should work\r\n")
 
-let stack_addr = addr stack.stack
-send_strings($cast[uint16](stack_addr), "\r\n")
+let stack_addr = addr stack
+let stack_top_sentinel_addr = addr stack.data[32]
 
-let stack_top_sentinel_addr = addr stack.stack_top_sentinel
-send_strings($cast[uint16](stack_top_sentinel_addr), "\r\n")
+basino_stack_init(stack_addr, addr stack.data[32], addr stack.data[0], addr stack.data[32])
 
-let res2 = basino_stack_init(stack_top_sentinel_addr, stack_addr, 128)
-send_strings("Result of init: ", $res2, "\r\n")
+let res3 = basino_get_basino_stack_bottom(stack_addr)
+send_test_result(res3 == cast[uint16](addr stack.data[0]), "stack bottom should be correct\r\n")
 
-Serial.send p"Value in basino_stack_bottom: "
-let res3 = basino_get_basino_stack_bottom()
-send_strings($res3, "\r\n")
+let res4 = basino_get_basino_stack_top(stack_addr)
+send_test_result(res4 == cast[uint16](addr stack.data[32]), "stack top should be correct\r\n")
 
-Serial.send p"Value in basino_stack_top: "
-let res4 = basino_get_basino_stack_top()
-send_strings($res4, "\r\n")
 
-Serial.send p"Value in basino_stack_size: "
-let res5 = basino_get_basino_stack_size()
-send_strings($res5, "\r\n")
+# Test the size of the stack
+let stack_size = basino_get_basino_stack_top_sentinel(stack_addr) - basino_get_basino_stack_bottom(stack_addr)
+var t_str = $stack_size
+send_test_result(stack_size == 32, "stack size should be correct\r\n")
 
-let res6 = basino_stack_push(5)
-send_strings("Result of push of 5: ", $res6, "\r\n")
+# Serial.send p"Value in basino_stack_size: "
+# let res5 = basino_get_basino_stack_size(stack_addr)
+# send_strings($res5, "\r\n")
 
-let res7 = basino_stack_pop()
-send_strings("Result of pop: ", $res7, "\r\n")
+var res = basino_stack_push(stack_addr, 5)
+send_test_result(res.kind == rkSuccessNil, "Result of push of 5: ", $res, "\r\n")
+
+res = basino_stack_pop(stack_addr)
+send_test_result(res.kind == rkSuccess, "Result of pop: ", $res, "\r\n")
 
 # Test popping from an empty stack
-let res8 = basino_stack_pop()
-send_strings("Result of empty stack pop: ", $res8, "\r\n")
+res = basino_stack_pop(stack_addr)
+send_test_result(res.kind == rkFailure, "Result of empty stack pop: ", $res, "\r\n")
 
 # Test a series of pops and pushes
-for i in countup(1'u8, 128'u8):
-  let res = basino_stack_push(i)
-  send_strings("Result of stack push ", $i, ": ", $res, "\r\n")
+for i in countup(1'u8, 32'u8):
+  res = basino_stack_push(stack_addr, i)
+  send_test_result(res.kind == rkSuccessNil, "Result of stack push ", $i, ": ", $res, "\r\n")
 
 # This push should fail
-let res9 = basino_stack_push(129)
-send_strings("Result of stack push 129: ", $res9, "\r\n")
+res = basino_stack_push(stack_addr, 33)
+send_test_result(res.kind == rkFailure, "Result of stack push 33: ", $res, "\r\n")
 
 while true:
   power_down()

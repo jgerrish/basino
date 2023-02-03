@@ -1,4 +1,10 @@
 //! Stack functions and data structures
+//!
+//! This Rust driver is used to test an assembly implementation of a
+//! stack on Atmel AVR devices.
+//!
+//! This crate owns the Struct object, it passes in pointers to the
+//! assembly code.
 #![warn(missing_docs)]
 
 use arduino_hal::{
@@ -12,102 +18,104 @@ use arduino_hal::{
 };
 
 use crate::{
-    basino_get_basino_stack_bottom, basino_get_basino_stack_size, basino_get_basino_stack_top,
+    basino_get_basino_stack_bottom, basino_get_basino_stack_top,
     basino_get_basino_stack_top_sentinel, basino_stack_init, basino_stack_pop, basino_stack_push,
-    BASINO_STACK,
+    Stack, BASINO_STACK_BUFFER,
 };
 
 /// Basic functions for a stack
 pub trait StackImpl {
-    /// Initialize the stack
-    fn init(&self, writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>)
-        -> Result<(), u8>;
+    /// Create a new Stack
+    fn new(writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) -> Self;
 
     /// Pop a value from the stack
-    fn pop(&self) -> Result<u8, u8>;
+    fn pop(&mut self) -> Result<u8, u8>;
 
     /// Push a value onto the stack
-    fn push(&self, value: u8) -> Result<(), u8>;
+    fn push(&mut self, value: u8) -> Result<(), u8>;
+
+    /// Get the size of the stack
+    fn size(&mut self) -> u16;
+
+    /// Print a bunch of debugging information about the stack
+    fn debug_print(&mut self, writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>);
 }
 
-impl StackImpl for crate::Stack {
-    /// Initialize the stack
-    fn init(
-        &self,
-        writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
-    ) -> Result<(), u8> {
-        let res = stack_init_safe(writer);
-        ufmt::uwriteln!(writer, "basino_stack_init result: {:?}\r", res).unwrap();
-        res?;
+impl StackImpl for Stack {
+    fn new(_writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) -> Self {
+        let stack_bottom_ptr = unsafe { core::ptr::addr_of_mut!(BASINO_STACK_BUFFER) as *mut u8 };
+        let len = unsafe { BASINO_STACK_BUFFER.len() - 1 };
 
-        let res = unsafe { basino_get_basino_stack_bottom() };
-        ufmt::uwriteln!(writer, "basino_get_basino_stack_bottom result: {}\r", res).unwrap();
+        let stack_top_ptr: *mut u8 = (stack_bottom_ptr as usize + len) as *mut u8;
 
-        let res = unsafe { basino_get_basino_stack_top() };
-        ufmt::uwriteln!(writer, "basino_get_basino_stack_top result: {}\r", res).unwrap();
+        let mut stack = Self {
+            data: core::ptr::null_mut::<u8>(),
+            top_sentinel: core::ptr::null_mut::<u8>(),
+            bottom: core::ptr::null_mut::<u8>(),
+            top: core::ptr::null_mut::<u8>(),
+        };
 
-        let res = unsafe { basino_get_basino_stack_top_sentinel() };
+        unsafe {
+            basino_stack_init(
+                core::ptr::addr_of_mut!(stack) as *mut Stack,
+                stack_top_ptr as *mut u8,
+                stack_bottom_ptr as *mut u8,
+                stack_top_ptr as *mut u8,
+            )
+        };
+
+        stack
+    }
+
+    fn debug_print(&mut self, writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) {
+        let res =
+            unsafe { basino_get_basino_stack_bottom(core::ptr::addr_of_mut!(*self) as *mut Stack) };
+
+        ufmt::uwriteln!(writer, "basino_get_basino_stack_bottom result: {:?}\r", res).unwrap();
+
+        let res =
+            unsafe { basino_get_basino_stack_top(core::ptr::addr_of_mut!(*self) as *mut Stack) };
+        ufmt::uwriteln!(writer, "basino_get_basino_stack_top result: {:?}\r", res).unwrap();
+
+        let res = unsafe {
+            basino_get_basino_stack_top_sentinel(core::ptr::addr_of_mut!(*self) as *mut Stack)
+        };
         ufmt::uwriteln!(
             writer,
-            "basino_get_basino_stack_top_sentinel result: {}\r",
+            "basino_get_basino_stack_top_sentinel result: {:?}\r",
             res
         )
         .unwrap();
 
-        let res = unsafe { basino_get_basino_stack_size() };
-        ufmt::uwriteln!(writer, "basino_get_basino_stack_size result: {}\r", res).unwrap();
-
-        Ok(())
+        let res = self.size();
+        ufmt::uwriteln!(writer, "size result: {}\r", res).unwrap();
     }
 
-    fn pop(&self) -> Result<u8, u8> {
+    fn pop(&mut self) -> Result<u8, u8> {
         let mut result: u8 = 0;
-        let res = unsafe { basino_stack_pop(&mut result) };
+        let res =
+            unsafe { basino_stack_pop(core::ptr::addr_of_mut!(*self) as *mut Stack, &mut result) };
         match result {
             0 => Ok(res),
             _ => Err(result),
         }
     }
 
-    fn push(&self, value: u8) -> Result<(), u8> {
-        let res = unsafe { basino_stack_push(value) };
-
+    fn push(&mut self, value: u8) -> Result<(), u8> {
+        let res = unsafe { basino_stack_push(core::ptr::addr_of_mut!(*self) as *mut Stack, value) };
         match res {
             0 => Ok(()),
             e => Err(e),
         }
     }
-}
 
-/// Initialize the stacks
-pub fn stack_init_safe(
-    writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
-) -> Result<(), u8> {
-    let stack_top_ptr: *mut u8 = unsafe {
-        // Set the stack top address to the address + 1
-        // There is now a basino_address_add function that can perform the addition
-        // in assembly.  It should be moved there.
-        (BASINO_STACK.stack.as_mut_ptr() as usize + BASINO_STACK.stack.len() + 1) as *mut u8
-    };
-
-    let stack_size: usize = unsafe { BASINO_STACK.stack.len() };
-    let stack_bottom: usize = stack_top_ptr as usize - stack_size;
-
-    ufmt::uwriteln!(writer, "stack_top_ptr: {}\r", stack_top_ptr as usize).unwrap();
-    ufmt::uwriteln!(writer, "stack_size: {}\r", stack_size).unwrap();
-    ufmt::uwriteln!(writer, "stack_bottom: {}\r", stack_bottom).unwrap();
-
-    let res = unsafe {
-        basino_stack_init(
-            stack_top_ptr as *mut u8,
-            stack_bottom as *mut u8,
-            stack_size as u8,
-        )
-    };
-
-    match res {
-        0 => Ok(()),
-        r => Err(r),
+    fn size(&mut self) -> u16 {
+        unsafe {
+            basino_get_basino_stack_top_sentinel(core::ptr::addr_of_mut!(*self) as *mut Stack)
+                as u16
+                - basino_get_basino_stack_bottom(core::ptr::addr_of_mut!(*self) as *mut Stack)
+                    as u16
+        }
     }
 }
 
@@ -115,7 +123,11 @@ pub fn stack_init_safe(
 /// This doesn't use the standard Rust testing framework.  Instead it's a normal
 /// public module that can be called by other systems.
 pub mod tests {
-    use crate::{stack::StackImpl, BASINO_STACK};
+    use crate::{
+        basino_get_basino_stack_bottom, basino_get_basino_stack_top,
+        basino_get_basino_stack_top_sentinel, stack::StackImpl, tests::write_test_result, Stack,
+        BASINO_STACK_BUFFER,
+    };
     use arduino_hal::{
         hal::port::{PD0, PD1},
         pac::USART0,
@@ -128,109 +140,105 @@ pub mod tests {
 
     /// Run all the tests in this module
     pub fn run_tests(writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) {
-        test_stack_init_works(writer);
+        test_stack_new_works(writer);
         test_stack_push_works(writer);
         test_stack_empty_pop_fails(writer);
-        test_stack_empty_pop_fails(writer);
-        // test_stack_push_full_stack_fails(writer);
+        test_stack_push_full_stack_fails(writer);
         test_stack_push_full_stack_pop_full_works(writer);
     }
 
     /// Test that initializing the stack works
-    pub fn test_stack_init_works(writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) {
-        let stack = unsafe { &BASINO_STACK };
+    pub fn test_stack_new_works(writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) {
+        let mut stack = Stack::new(writer);
 
-        let res = stack.init(writer);
+        let expected_size = unsafe { BASINO_STACK_BUFFER.len() - 1 };
+        let size = stack.size();
 
-        match res {
-            Err(_) => {
-                ufmt::uwriteln!(writer, "FAILURE: Error initializing stack\r").unwrap();
-            }
-            Ok(_) => {
-                ufmt::uwriteln!(writer, "SUCCESS: Initialized stack\r").unwrap();
-            }
-        }
+        let expected_bottom: *mut u8 =
+            unsafe { core::ptr::addr_of_mut!(BASINO_STACK_BUFFER) as *mut u8 };
+        let bottom = unsafe { basino_get_basino_stack_bottom(&stack) };
+
+        let expected_top: *mut u8 = unsafe {
+            (core::ptr::addr_of_mut!(BASINO_STACK_BUFFER) as usize + expected_size) as *mut u8
+        };
+        let top = unsafe { basino_get_basino_stack_top(&stack) };
+
+        let expected_top_sentinel: *mut u8 = unsafe {
+            (core::ptr::addr_of_mut!(BASINO_STACK_BUFFER) as usize + expected_size) as *mut u8
+        };
+        let top_sentinel = unsafe { basino_get_basino_stack_top_sentinel(&stack) };
+
+        write_test_result(
+            writer,
+            bottom == expected_bottom,
+            "initialized stack should have the correct bottom",
+        );
+
+        write_test_result(
+            writer,
+            top == expected_top,
+            "initialized stack should have the correct top",
+        );
+
+        write_test_result(
+            writer,
+            top_sentinel == expected_top_sentinel,
+            "initialized stack should have the correct top sentinel",
+        );
+
+        write_test_result(
+            writer,
+            size == expected_size as u16,
+            "initialized stack should have the correct size",
+        );
     }
 
     /// Test that pushing a value on the stack works
     pub fn test_stack_push_works(writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) {
-        let stack = unsafe { &BASINO_STACK };
+        let mut stack = Stack::new(writer);
 
         let res = stack.push(5);
-
-        match res {
-            Err(e) => {
-                ufmt::uwriteln!(
-                    writer,
-                    "FAILURE: Error pushing a value onto the stack: {}\r",
-                    e
-                )
-                .unwrap();
-            }
-            Ok(_) => {
-                ufmt::uwriteln!(writer, "SUCCESS: Pushed a value onto the stack\r").unwrap();
-            }
-        }
+        write_test_result(writer, res.is_ok(), "should be able to push value");
 
         let res = stack.pop();
-
-        match res {
-            Err(_) => {
-                ufmt::uwriteln!(writer, "FAILURE: Error popping a value from the stack\r").unwrap();
-            }
-            Ok(v) => {
-                ufmt::uwriteln!(writer, "SUCCESS: Popped a value from the stack: {}\r", v).unwrap();
-            }
-        }
+        write_test_result(writer, res.is_ok(), "should be able to pop value");
+        write_test_result(
+            writer,
+            res.unwrap() == 5,
+            "popped value should equal pushed value",
+        );
     }
 
     /// Test that popping a value from an empty stack fails
     pub fn test_stack_empty_pop_fails(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let stack = unsafe { &BASINO_STACK };
+        let mut stack = Stack::new(writer);
 
         let res = stack.pop();
 
-        match res {
-            Err(_) => {
-                ufmt::uwriteln!(writer, "SUCCESS: Error popping a value from the stack\r").unwrap();
-            }
-            Ok(v) => {
-                ufmt::uwriteln!(writer, "FAILURE: Popped a value from the stack: {}\r", v).unwrap();
-            }
-        }
+        write_test_result(
+            writer,
+            res.is_err(),
+            "shouldn't be able to pop value from empty stack",
+        );
     }
 
     /// Test that pushing into a full stack fails
     pub fn test_stack_push_full_stack_fails(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let stack = unsafe { &BASINO_STACK };
+        let mut stack = Stack::new(writer);
 
-        for i in 0..stack.stack.len() {
-            let n = (i % 256) as u8;
+        for i in 0..stack.size() {
+            let n = (i % 255) as u8;
             let res = stack.push(n);
 
-            match res {
-                Err(e) => {
-                    ufmt::uwriteln!(
-                        writer,
-                        "FAILURE: Error pushing a value on the stack: {} {}\r",
-                        n,
-                        e
-                    )
-                    .unwrap();
-                }
-                Ok(_) => {
-                    ufmt::uwriteln!(
-                        writer,
-                        "SUCCESS: Success pushing a value on the stack: {}\r",
-                        n
-                    )
-                    .unwrap();
-                }
-            }
+            write_test_result(
+                writer,
+                res.is_ok(),
+                "should be able to push value to fill stack",
+            );
         }
 
         let res = stack.push(0_u8);
@@ -239,13 +247,13 @@ pub mod tests {
             Err(e) => {
                 ufmt::uwriteln!(
                     writer,
-                    "SUCCESS: Error pushing a value on the stack: {}\r",
+                    "SUCCESS Error pushing a value on the stack: {}\r",
                     e
                 )
                 .unwrap();
             }
             Ok(_) => {
-                ufmt::uwriteln!(writer, "FAILURE: Success pushing a value on the stack\r").unwrap();
+                ufmt::uwriteln!(writer, "FAILURE Success pushing a value on the stack\r").unwrap();
             }
         }
     }
@@ -254,32 +262,11 @@ pub mod tests {
     pub fn test_stack_push_full_stack_pop_full_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let stack = unsafe { &BASINO_STACK };
+        let mut stack = Stack::new(writer);
 
-        for i in 0..stack.stack.len() {
+        for i in 0..stack.size() {
             let n = (i % 256) as u8;
-            let res = stack.push(n);
-
-            match res {
-                Err(e) => {
-                    ufmt::uwriteln!(
-                        writer,
-                        "FAILURE: Error pushing a value on the stack: {} {}\r",
-                        n,
-                        e
-                    )
-                    .unwrap();
-                }
-                Ok(_) => {
-                    ufmt::uwriteln!(
-                        writer,
-                        "SUCCESS: Success pushing a value on the stack: {}\r",
-                        n
-                    )
-                    .unwrap();
-                }
-            }
-            // assert!(res.is_ok());
+            let _res = stack.push(n);
         }
 
         let res = stack.push(0_u8);
@@ -288,68 +275,40 @@ pub mod tests {
             Err(e) => {
                 ufmt::uwriteln!(
                     writer,
-                    "SUCCESS: Error pushing a value on the stack: {}\r",
+                    "SUCCESS Error pushing a value on the stack: {}\r",
                     e
                 )
                 .unwrap();
             }
             Ok(_) => {
-                ufmt::uwriteln!(writer, "FAILURE: Success pushing a value on the stack\r").unwrap();
+                ufmt::uwriteln!(writer, "FAILURE Success pushing a value on the stack\r").unwrap();
             }
         }
 
         // Now pop all the values
-        for i in 0..stack.stack.len() {
-            let n = (stack.stack.len() - 1) as u8 - (i % 256) as u8;
+        for i in 0..stack.size() {
+            let n = (stack.size() - 1) - (i % 256);
             let res = stack.pop();
 
-            match res {
-                Err(e) => {
-                    ufmt::uwriteln!(
-                        writer,
-                        "FAILURE: Error pushing a value on the stack: {} {}\r",
-                        n,
-                        e
-                    )
-                    .unwrap();
-                }
-                Ok(value) => {
-                    if value == n {
-                        ufmt::uwriteln!(
-                            writer,
-                            "SUCCESS: Success popping a value from the stack: {} == {}\r",
-                            value,
-                            n
-                        )
-                        .unwrap();
-                    } else {
-                        ufmt::uwriteln!(
-                            writer,
-                            "FAILURE: Failure popping a value from the stack: {} != {}\r",
-                            value,
-                            n
-                        )
-                        .unwrap();
-                    }
-                }
-            }
-            // assert!(res.is_ok());
+            write_test_result(
+                writer,
+                res.is_ok(),
+                "should be able to pop value from filled stack",
+            );
+
+            write_test_result(
+                writer,
+                res.unwrap() == n as u8,
+                "popped value from filled stack should equal pushed value",
+            );
         }
 
         let res = stack.pop();
 
-        match res {
-            Err(e) => {
-                ufmt::uwriteln!(
-                    writer,
-                    "SUCCESS: Error popping a value from the stack: {}\r",
-                    e
-                )
-                .unwrap();
-            }
-            Ok(v) => {
-                ufmt::uwriteln!(writer, "FAILURE: Popped a value from the stack: {}\r", v).unwrap();
-            }
-        }
+        write_test_result(
+            writer,
+            res.is_err(),
+            "shouldn't be able to pop value from empty stack",
+        );
     }
 }

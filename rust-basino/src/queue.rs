@@ -13,9 +13,8 @@ use arduino_hal::{
 
 use crate::{
     basino_queue_get, basino_queue_get_head, basino_queue_get_last_head,
-    basino_queue_get_queue_start, basino_queue_get_queue_end,
-    basino_queue_get_tail, basino_queue_init, basino_queue_put,
-    BASINO_QUEUE,
+    basino_queue_get_queue_end, basino_queue_get_queue_start, basino_queue_get_tail,
+    basino_queue_init, basino_queue_put, BASINO_QUEUE,
 };
 
 /// Basic functions for a queue
@@ -247,7 +246,7 @@ pub mod tests {
 
     /// Test a case where the head wraps around
     pub fn test_queue_head_wraps_works(
-        writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>
+        writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
         let queue = unsafe { &BASINO_QUEUE };
         let _res = queue.init(writer);
@@ -262,13 +261,17 @@ pub mod tests {
             write_test_result(
                 writer,
                 res.unwrap() == ((i % 256) as u8),
-                "should be able to get filled values "
+                "should be able to get filled values ",
             );
         }
 
         for i in 1..=10 {
             let res = queue.put(i as u8);
-            write_test_result(writer, res.is_ok(), "should be able to put in 10 more values");
+            write_test_result(
+                writer,
+                res.is_ok(),
+                "should be able to put in 10 more values",
+            );
         }
 
         for i in 1..=10 {
@@ -276,7 +279,7 @@ pub mod tests {
             write_test_result(
                 writer,
                 res.unwrap() == (i as u8),
-                "should be able to get values"
+                "should be able to get values",
             );
         }
     }

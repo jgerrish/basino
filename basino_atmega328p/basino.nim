@@ -13,7 +13,7 @@ type
     of rkSuccessNil:
       nil
     of rkSuccess:
-      val: T
+      val*: T
     of rkFailure:
       nil
 
@@ -49,49 +49,47 @@ proc basino_address_add*(a: uint16, b: uint16): Result[uint16] =
   else:
     result = Result[uint16](kind: rkFailure)
 
-proc basino_stack_init_c*(stack_top: pointer, stack_bottom: pointer,
-    stack_size: uint8): uint8 {.importc: "basino_stack_init", cdecl.}
+proc basino_stack_init_c*(stack: pointer, top: pointer, bottom: pointer,
+                          top_sentinel: pointer) {.importc: "basino_stack_init", cdecl.}
 
-proc basino_stack_init*(stack_top: pointer, stack_bottom: pointer,
-                       stack_size: uint8): Result[uint8] =
-  let res = basino_stack_init_c(stack_top, stack_bottom, stack_size)
-  if res == 0:
-    result = Result[uint8](kind: rkSuccessNil)
-  else:
-    result = Result[uint8](kind: rkFailure)
+proc basino_stack_init*(stack: pointer, top: pointer, bottom: pointer,
+                        top_sentinel: pointer) =
+  basino_stack_init_c(stack, top, bottom, top_sentinel)
 
 # Test setting and getting the stack bottom, size, and stack start
 # This also lets us test 16-bit return values
 # The addresses should be consistent with a 128-byte change
-proc basino_get_basino_stack_top*(): uint16 {.importc: "basino_get_basino_stack_top", cdecl.}
+proc basino_get_basino_stack_top*(stack: pointer): uint16 {.importc: "basino_get_basino_stack_top", cdecl.}
 
-proc basino_get_basino_stack_bottom*(): uint16 {.importc: "basino_get_basino_stack_bottom", cdecl.}
+proc basino_get_basino_stack_top_sentinel*(stack: pointer): uint16 {.importc: "basino_get_basino_stack_top_sentinel", cdecl.}
 
-proc basino_get_basino_stack_size*(): uint8 {.importc: "basino_get_basino_stack_size", cdecl.}
+proc basino_get_basino_stack_bottom*(stack: pointer): uint16 {.importc: "basino_get_basino_stack_bottom", cdecl.}
 
-proc basino_stack_push_c*(value: uint8): uint8 {.importc: "basino_stack_push", cdecl.}
+# proc basino_get_basino_stack_size*(stack: pointer): uint8 {.importc: "basino_get_basino_stack_size", cdecl.}
+
+proc basino_stack_push_c*(stack: pointer, value: uint8): uint8 {.importc: "basino_stack_push", cdecl.}
 
 # TODO: Still not ideal result type definition.  The unnecessary uint8
 # isn't good.
 # But it's better than simple integer return types.
-proc basino_stack_push*(value: uint8): Result[uint8] =
-  let res = basino_stack_push_c(value)
+proc basino_stack_push*(stack: pointer, value: uint8): Result[uint8] =
+  let res = basino_stack_push_c(stack, value)
   if res == 0:
     result = Result[uint8](kind: rkSuccessNil)
   else:
     result = Result[uint8](kind: rkFailure)
 
-proc basino_stack_pop_c*(res: pointer): uint8 {.importc: "basino_stack_pop", cdecl.}
+proc basino_stack_pop_c*(stack: pointer, res: pointer): uint8 {.importc: "basino_stack_pop", cdecl.}
 
 # Specifying the object type in the function declaration does not
 # constrain the result constructors to the type, their type still
 # needs to be explictly declared.
-proc basino_stack_pop*(): Result[uint8] =
+proc basino_stack_pop*(stack: pointer): Result[uint8] =
   # Declare the result with var so it's mutable
   var stack_pop_result = 0'u8
   let stack_pop_result_addr = addr stack_pop_result
 
-  let res = basino_stack_pop_c(stack_pop_result_addr)
+  let res = basino_stack_pop_c(stack, stack_pop_result_addr)
   if stack_pop_result == 0:
     result = Result[uint8](kind: rkSuccess, val: res)
   else:
