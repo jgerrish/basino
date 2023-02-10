@@ -63,9 +63,23 @@ pub struct Queue {
     // pub tail: *mut u8,
 }
 
+/// Technically, on embedded devices with limited memory, even
+/// address zero can be used.  Especially on Harvard devices,
+/// where interrupts may be in program code and the stack
+/// allocated on the heap.
+///
+/// We can setup a filler byte at the beginning of memory to
+/// deal with this.
+/// A dummy placeholder so that null pointers aren't accidently used.
+#[link_section = ".ram2bss"]
+#[used]
+pub static mut BASINO_STACK_FILLER: u8 = 1;
+
 /// Dummy location needed because of DEVICE_PERIPHERALS
 /// Linker scripts aren't working on AVR, so we can't have fine-grained control
 /// over memory.  This isn't an ideal solution, but it works for now.
+///
+/// This may not be needed with relative linking enabled.
 ///
 /// And it appears (this might be wrong) that Rust is putting our data
 /// in the same location as DEVICE_PERIPHERALS from the avr-device
@@ -114,17 +128,24 @@ extern "C" {
     /// Add two 8-bit unsigned integers together
     pub fn basino_add(a: u8, b: u8) -> u16;
 
+    /// Test whether a is greater than b
+    /// Returns one if a is greater than b
+    /// Return zero if it isn't
+    pub fn basino_gt(a: u16, b: u16) -> u8;
+
+    /// Test whether a is greater than or equal to b
+    /// Returns one if a is greater than or equal to b
+    /// Return zero if it isn't
+    pub fn basino_gt_eq(a: u16, b: u16) -> u8;
+
     // Stack functions
 
-    /// Initialize the stack
-    // The top_sentinel should probably be calculated from the stack top in the
-    // basino_stack_init code
-    pub fn basino_stack_init(
-        stack: *mut Stack,
-        top: *mut u8,
-        bottom: *mut u8,
-        top_sentinel: *mut u8,
-    );
+    /// Initialize the stack.
+    /// This initializes with the permanent bottom and maximum top.
+    /// It sets the current top and bottom to those values.
+    /// The top is a top sentinel, it should be one above the stack
+    /// size.
+    pub fn basino_stack_init(stack: *mut Stack, top: *mut u8, bottom: *mut u8) -> u8;
 
     /// Push a value onto the stack
     pub fn basino_stack_push(stack: *const Stack, value: u8) -> u8;
@@ -170,6 +191,7 @@ extern "C" {
 /// Test module for the top-level Forth system
 #[allow(unused_imports)]
 pub mod tests {
+    use crate::{basino_gt, basino_gt_eq};
     use arduino_hal::{
         hal::port::{PD0, PD1},
         pac::USART0,
@@ -199,5 +221,57 @@ pub mod tests {
             ufmt::uwrite!(writer, "FAILURE").unwrap();
         }
         ufmt::uwriteln!(writer, " {}\r", status_msg).unwrap();
+    }
+
+    /// Run all the tests in this module
+    pub fn run_tests(writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) {
+        test_basino_gt_gt_works(writer);
+        test_basino_gt_eq_works(writer);
+        test_basino_gt_lt_works(writer);
+        test_basino_gt_eq_gt_works(writer);
+        test_basino_gt_eq_eq_works(writer);
+        test_basino_gt_eq_lt_works(writer);
+    }
+
+    /// Test that basino_gt works for greater than
+    pub fn test_basino_gt_gt_works(writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) {
+        let res = unsafe { basino_gt(0x1000, 0x0010) };
+        write_test_result(writer, res == 1, "0x1000 should be > 0x0010");
+    }
+
+    /// Test that basino_gt works for equal
+    pub fn test_basino_gt_eq_works(writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) {
+        let res = unsafe { basino_gt(0x1111, 0x1111) };
+        write_test_result(writer, res == 0, "0x1111 should not be > 0x1111");
+    }
+
+    /// Test that basino_gt works for less than
+    pub fn test_basino_gt_lt_works(writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) {
+        let res = unsafe { basino_gt(0x0010, 0x1000) };
+        write_test_result(writer, res == 0, "0x0010 should not be > 0x1000");
+    }
+
+    /// Test that basino_gt_eq works for greater than
+    pub fn test_basino_gt_eq_gt_works(
+        writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
+    ) {
+        let res = unsafe { basino_gt_eq(0x1000, 0x0010) };
+        write_test_result(writer, res == 1, "0x1000 should be >= 0x0010");
+    }
+
+    /// Test that basino_gt_eq works for equal
+    pub fn test_basino_gt_eq_eq_works(
+        writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
+    ) {
+        let res = unsafe { basino_gt_eq(0x1111, 0x1111) };
+        write_test_result(writer, res == 1, "0x1111 should be >= 0x1111");
+    }
+
+    /// Test that basino_gt_eq works for less than
+    pub fn test_basino_gt_eq_lt_works(
+        writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
+    ) {
+        let res = unsafe { basino_gt_eq(0x0010, 0x1000) };
+        write_test_result(writer, res == 0, "0x0010 should not be >= 0x1000");
     }
 }

@@ -1,12 +1,11 @@
-//! A simple stack implementation for Arduino devices
+//! Test the stack implementation for Arduino devices
 #![warn(missing_docs)]
 #![no_std]
 #![no_main]
 
-// use ufmt::UnstableDoAsFormatter;
-// use ufmt_utils::WriteAdapter;
-
 use panic_halt as _;
+
+use rust_basino::stack::tests::run_tests;
 
 #[arduino_hal::entry]
 fn main() -> ! {
@@ -15,8 +14,7 @@ fn main() -> ! {
 
     let mut serial = arduino_hal::default_serial!(dp, pins, 57600);
 
-    rust_basino::tests::run_tests(&mut serial);
-    rust_basino::queue::tests::run_tests(&mut serial);
+    run_tests(&mut serial);
 
     loop {
         avr_device::asm::sleep();

@@ -12,6 +12,13 @@ pub enum ErrorKind {
     StackOverflow,
     /// A stack underflow would occur if an item is popped
     StackUnderflow,
+    /// A null pointer was passed in as a parameter or
+    /// would have been dereferenced
+    NullPointer,
+    /// Invalid arguments were passed into a function.
+    /// Example includes trying to initialize a stack with the bottom
+    /// greater than the top.
+    InvalidArguments,
     /// An unknown error type
     Unknown,
 }
@@ -22,9 +29,11 @@ impl uDebug for ErrorKind {
         T: uWrite + ?Sized,
     {
         match self {
-            ErrorKind::StackOverflow => f.write_str("Stack overflow error"),
-            ErrorKind::StackUnderflow => f.write_str("Stack underflow error"),
-            ErrorKind::Unknown => f.write_str("Unknown error"),
+            ErrorKind::StackOverflow => f.write_str("A stack overflow occurred"),
+            ErrorKind::StackUnderflow => f.write_str("A stack underflow occurred"),
+            ErrorKind::NullPointer => f.write_str("A null pointer was passed in as a parameter"),
+            ErrorKind::InvalidArguments => f.write_str("Invalid arguments were passed in"),
+            ErrorKind::Unknown => f.write_str("An unknown error occurred"),
         }
     }
 }
@@ -34,12 +43,15 @@ impl Display for ErrorKind {
         match self {
             ErrorKind::StackOverflow => write!(f, "A stack overflow occurred"),
             ErrorKind::StackUnderflow => write!(f, "A stack underflow occurred"),
+            ErrorKind::NullPointer => write!(f, "A null pointer was passed in as a parameter"),
+            ErrorKind::InvalidArguments => write!(f, "Invalid arguments were passed in"),
             ErrorKind::Unknown => write!(f, "An unknown error occurred"),
         }
     }
 }
 
 /// An error that can occur when working with a temperature server
+#[derive(PartialEq)]
 pub struct Error {
     kind: ErrorKind,
 }

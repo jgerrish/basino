@@ -68,7 +68,7 @@ send_test_result(res_add == 8, "add of 3 + 5 should equal 8\r\n")
 # ProgmemStrings are stored in program memory, so take up less of the
 # SRAM on limited memory AVR devices.
 let address_add_result_1 = basino_address_add(32767, 32780'u16)
-send_test_result(address_add_result_1.kind == rkFailure, "address add with carry should fail\r\n")
+send_test_result(address_add_result_1.kind == rkFailureNil, "address add with carry should fail\r\n")
 
 let address_add_result_2 = basino_address_add(16383, 16383)
 send_test_result(address_add_result_2.kind == rkSuccess and address_add_result_2.val == 32766,
@@ -77,7 +77,8 @@ send_test_result(address_add_result_2.kind == rkSuccess and address_add_result_2
 let stack_addr = addr stack
 let stack_top_sentinel_addr = addr stack.data[32]
 
-basino_stack_init(stack_addr, addr stack.data[32], addr stack.data[0], addr stack.data[32])
+let res2 = basino_stack_init(stack_addr, addr stack.data[32], addr stack.data[0])
+send_test_result(res2.kind == rkSuccessNil, "basino_stack_init worked", $res2, "\r\n")
 
 let res3 = basino_get_basino_stack_bottom(stack_addr)
 send_test_result(res3 == cast[uint16](addr stack.data[0]), "stack bottom should be correct\r\n")

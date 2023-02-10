@@ -70,11 +70,16 @@ This also creates symlinks to the libraries and sets up some other
 things.  Linker flags were a pain to get working with each separate
 language.  Users are welcome to contribute helpful improvements.
 
+The Rust code has had the testing driver moved into the examples
+directory.  This was done to reduce the total linked size of the
+normal code.
+
 Then you can either use it in your own project, or try testing it with
 Rust or Nim:
 
 $ cd rust-basino
 $ cargo build
+$ cargo run --example test_stack
 $ cargo run
 
 Build the Nim version:

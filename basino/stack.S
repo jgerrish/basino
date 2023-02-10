@@ -68,11 +68,15 @@
 ;;   parameter 2:
 ;;     The value to push
 ;;
-;; On success zero is returned.
-;; On failure one is returned.
+;; Returns:
+;;   On success zero is returned.
+;;   On failure, if the stack pointer is null, one is returned.
+;;   On failure, if the stack is full, two is returned.
+;;
 basino_stack_push:
 	push r16
 	push r17
+	push r18
 	push r20
 	push r21
 	push r26
@@ -80,6 +84,15 @@ basino_stack_push:
 	push r28
 	push r29
 
+basino_stack_push_null_pointer_check:
+	ldi r16, 0
+	cp r24, r16
+	brne basino_stack_push_not_null_pointer
+	cp r25, r16
+	brne basino_stack_push_not_null_pointer
+	rjmp basino_stack_push_null_pointer
+
+basino_stack_push_not_null_pointer:
 	;; Set up the stack structure
 	movw Y, r24		; Copy r25:r24 -> Y
 
@@ -126,11 +139,16 @@ basino_stack_push_do_push:
 	ldi r24, 0
 	rjmp basino_stack_push_end
 
+basino_stack_push_null_pointer:
+	ldi r25, 0
+	ldi r24, 1
+	rjmp basino_stack_push_end
+
 basino_stack_push_stack_overflow:
 	;; Handle the case where we're at the bottom of the stack
 	;; Return an unsuccessful result
 	ldi r25, 0
-	ldi r24, 1
+	ldi r24, 2
 	rjmp basino_stack_push_end
 
 basino_stack_push_end:
@@ -140,6 +158,7 @@ basino_stack_push_end:
 	pop r26
 	pop r21
 	pop r20
+	pop r18
 	pop r17
 	pop r16
 
@@ -163,6 +182,9 @@ basino_stack_push_end:
 ;;
 ;;   parameter 2:
 ;;     A pointer to a result code variable.
+;;     Sets the variable to zero if the pop was successful.
+;;     Sets the variable to one if there is a null stack pointer.
+;;     Sets the variable to two if there is a stack underflow.
 ;;
 basino_stack_pop:
 	push r16
@@ -175,6 +197,15 @@ basino_stack_pop:
 	push r29
 	push r30
 
+basino_stack_pop_null_pointer_check:
+	ldi r16, 0
+	cp r24, r16
+	brne basino_stack_pop_not_null_pointer
+	cp r25, r16
+	brne basino_stack_pop_not_null_pointer
+	rjmp basino_stack_pop_null_pointer
+
+basino_stack_pop_not_null_pointer:
 	;; Set up the stack structure
 	movw Y, r24		; Copy r25:r24 -> Y
 
@@ -230,16 +261,20 @@ basino_stack_pop_do_pop:
 
 	rjmp basino_stack_pop_end
 
+basino_stack_pop_null_pointer:
+	ldi r30, 1
+	rjmp basino_stack_pop_end
+
 basino_stack_pop_underflow:
 	;; Handle the case where we're at the maximum top of the stack
 	;; Return an unsuccessful result as the first parameter
-	ldi r30, 1
+	ldi r30, 2
 
 	rjmp basino_stack_pop_end
 
 basino_stack_pop_end:
 	;; Set the return result (the first parameter)
-	movw X, r18		; This copies r19:r18 to X
+	movw X, r22		; This copies r23:r22 (second argument) to X
 	st X, r30
 
 	pop r30
@@ -266,7 +301,9 @@ basino_stack_pop_end:
 ;; The Z register is composed of R30 (low) and R31 (high)
 ;; R2-R17 are also call-saved
 ;; Each register is also mapped to the first 32 locations in the data space,
-
+;;
+;; Returns an 8-bit result code
+;;
 ;; Parameters:
 ;; This function has three unsigned 16-bit parameters, and one unsigned 8-bit parameter:
 ;;   parameter 1:
@@ -274,16 +311,23 @@ basino_stack_pop_end:
 ;;     It is placed in r24 and r25.
 ;;
 ;;   parameter 2:
-;;     argument one is the stack top address, an unsigned 16-bit integer, in r22 and r23
+;;     Parameter two is the stack maximum top address or stack top sentinel,
+;;     an unsigned 16-bit integer, in r22 and r23
 ;;     The stack top starts at one more than the length of the stack, it
 ;;     points to a sentinel.
 ;;
 ;;   parameter 3:
 ;;     argument three is the stack bottom, an unsigned 16-bit integer, in r20 and r21
 ;;
-;;   parameter 4:
-;;     argument four is the stack top sentinel, an unsigned 16-bit integer, in r18 and r19
+;; Returns:
+;;   Zero if the subroutine is successful
+;;   One if the stack pointer parameter is a null pointer
+;;   Two if the stack bottom was above the top sentinel
+;;
 basino_stack_init:
+	push r15
+	push r16
+	push r17
 	push r20
 	push r21
 	push r26
@@ -291,8 +335,47 @@ basino_stack_init:
 	push r28
 	push r29
 
+basino_stack_init_null_pointer_check:
+	ldi r16, 0
+	cp r24, r16
+	brne basino_stack_init_top_bottom_check
+	cp r25, r16
+	brne basino_stack_init_top_bottom_check
+	rjmp basino_stack_init_null_pointer
+
+basino_stack_init_top_bottom_check:
+	movw r16, r22		; Copy r23:r22 -> r17:r16
+
+	;; Now check that the stack top is above the stack bottom
+	;;
+	;; Equal bottom and top means that the stack size is zero.
+	;; This could technically be possible, even if it's not
+	;; useful.
+
+	push r22
+	push r23
+	push r24
+	push r25
+
+	movw r24, r22
+	movw r22, r20
+	rcall basino_gt
+	cpi r24, 0
+
+	pop r25
+	pop r24
+	pop r23
+	pop r22
+
+	breq basino_stack_init_top_lt_eq_bottom
+	rjmp basino_stack_init_do_init
+
+basino_stack_init_do_init:
 	movw Y, r24		; Copy r25:r24 -> Y
 
+	;; Set the pointers in the stack structure to actual locations
+	;; in the stack.  This assumes a normal array that is
+	;; continuous.
 	;; Note: This doesn't do post-increment or pre-decrement on
 	;; the pointer.
 	std Y+BASINO_STACK_STACK_TOP_OFFSET, r22
@@ -301,15 +384,36 @@ basino_stack_init:
 	std Y+BASINO_STACK_STACK_BOTTOM_OFFSET, r20
 	std Y+BASINO_STACK_STACK_BOTTOM_OFFSET+1, r21
 
-	std Y+BASINO_STACK_STACK_TOP_SENTINEL_OFFSET, r18
-	std Y+BASINO_STACK_STACK_TOP_SENTINEL_OFFSET+1, r19
+	std Y+BASINO_STACK_STACK_TOP_SENTINEL_OFFSET, r22
+	std Y+BASINO_STACK_STACK_TOP_SENTINEL_OFFSET+1, r23
 
+	rjmp basino_stack_init_successful
+
+basino_stack_init_null_pointer:
+	ldi r25, 0
+	ldi r24, 1
+	rjmp basino_stack_init_end
+
+basino_stack_init_top_lt_eq_bottom:
+	ldi r25, 0
+	ldi r24, 2
+	rjmp basino_stack_init_end
+
+basino_stack_init_successful:
+	ldi r25, 0
+	ldi r24, 0
+	rjmp basino_stack_init_end
+
+basino_stack_init_end:
 	pop r29
 	pop r28
 	pop r27
 	pop r26
 	pop r21
 	pop r20
+	pop r17
+	pop r16
+	pop r15
 
 	ret
 

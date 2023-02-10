@@ -104,6 +104,75 @@ basino_address_add_end:
 
 	ret
 
+.globl basino_gt, basino_gt_eq
+
+;; Test if parameter one is greater than parameter two
+;; Returns true (one) if it is, false (zero) if it isn't
+;;
+;; Parameters:
+;;   Parameter one: The first operand
+;;   Parameter two: The second operand
+;;
+;; Return:
+;;   A one-byte return result.
+;;   One if the first operand is greater than the second operand.
+;;   Zero if it isn't
+;;
+;; Clobbers r24 as the return value.
+basino_gt:
+	;; cp is like sub but doesn't change the registers
+	;; cp r22, r24 is: r22 - r24
+	cp	r22, r24	; compare the low bytes, set carry if unsigned greater
+	;; cpc is like sbc but doesn't change the registers
+	;; cpc r23, r25 is: r23 - r25 - C
+	cpc	r23, r25	; compare the high bytes and last carry, set carry if unsigned greater
+	brcc	basino_gt_false
+	rjmp basino_gt_true
+
+basino_gt_false:
+	ldi	r24, 0x00
+	rjmp basino_gt_end
+
+basino_gt_true:
+	ldi	r24, 0x01
+	rjmp basino_gt_end
+
+basino_gt_end:
+	ret
+
+;; Test if parameter one is greater than or equal to parameter two
+;; Returns true (one) if it is, false (zero) if it isn't
+;;
+;; Parameters:
+;;   Parameter one: The first operand
+;;   Parameter two: The second operand
+;;
+;; Return:
+;;   A one-byte return result.
+;;   One if the first operand is greater than or equal to the second operand.
+;;   Zero if it isn't
+;;
+;; Clobbers r24 as the return value.
+basino_gt_eq:
+	;; cp is like sub but doesn't change the registers
+	;; cp r24, r22 is: r24 - r22
+	cp	r24, r22
+	;; cpc is like sbc but doesn't change the registers
+	;; cpc r25, r23 is: r25 - r23 - C
+	cpc	r25, r23
+	brcs	basino_gt_eq_false
+	rjmp basino_gt_eq_true
+
+basino_gt_eq_false:
+	ldi	r24, 0x00
+	rjmp basino_gt_eq_end
+
+basino_gt_eq_true:
+	ldi	r24, 0x01
+	rjmp basino_gt_eq_end
+
+basino_gt_eq_end:
+	ret
 
 ;; The Sleep Mode Control Register
 ;; Contains the sleep enable bit, and the sleep mode bits

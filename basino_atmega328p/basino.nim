@@ -1,4 +1,9 @@
 # Set of functions to use the basino BASIC library
+#
+# These functions don't test the API as thoroughly as the Rust code
+# This is a known issue, and should probably be fixed.
+# The error API is also out-of-sync, and before this code is used for
+# production purposes that needs to be fixed.
 
 # This result type is based on the result type from the Nim example
 # parser combinator library: tests/misc/parsecomb.nim
@@ -7,15 +12,17 @@
 # instead of a type parameter to indicate None
 # TODO: Define a set of error code enums
 type
-  ResultKind* = enum rkSuccess, rkSuccessNil, rkFailure
+  ResultKind* = enum rkSuccess, rkSuccessNil, rkFailure, rkFailureNil
   Result*[T] = object
     case kind*: ResultKind
     of rkSuccessNil:
       nil
     of rkSuccess:
       val*: T
-    of rkFailure:
+    of rkFailureNil:
       nil
+    of rkFailure:
+      error_code*: T
 
 # when defined(Windows):
 #   const libName* = "basino.dll"
@@ -47,14 +54,16 @@ proc basino_address_add*(a: uint16, b: uint16): Result[uint16] =
   if address_add_result == 0:
     result = Result[uint16](kind: rkSuccess, val: res)
   else:
-    result = Result[uint16](kind: rkFailure)
+    result = Result[uint16](kind: rkFailureNil)
 
-proc basino_stack_init_c*(stack: pointer, top: pointer, bottom: pointer,
-                          top_sentinel: pointer) {.importc: "basino_stack_init", cdecl.}
+proc basino_stack_init_c*(stack: pointer, top: pointer, bottom: pointer): uint8 {.importc: "basino_stack_init", cdecl.}
 
-proc basino_stack_init*(stack: pointer, top: pointer, bottom: pointer,
-                        top_sentinel: pointer) =
-  basino_stack_init_c(stack, top, bottom, top_sentinel)
+proc basino_stack_init*(stack: pointer, top: pointer, bottom: pointer): Result[uint8] =
+  let res = basino_stack_init_c(stack, top, bottom)
+  if res == 0:
+    result = Result[uint8](kind: rkSuccessNil)
+  else:
+    result = Result[uint8](kind: rkFailure, error_code: res)
 
 # Test setting and getting the stack bottom, size, and stack start
 # This also lets us test 16-bit return values
@@ -77,7 +86,7 @@ proc basino_stack_push*(stack: pointer, value: uint8): Result[uint8] =
   if res == 0:
     result = Result[uint8](kind: rkSuccessNil)
   else:
-    result = Result[uint8](kind: rkFailure)
+    result = Result[uint8](kind: rkFailure, error_code: res)
 
 proc basino_stack_pop_c*(stack: pointer, res: pointer): uint8 {.importc: "basino_stack_pop", cdecl.}
 
@@ -93,4 +102,4 @@ proc basino_stack_pop*(stack: pointer): Result[uint8] =
   if stack_pop_result == 0:
     result = Result[uint8](kind: rkSuccess, val: res)
   else:
-    result = Result[uint8](kind: rkFailure)
+    result = Result[uint8](kind: rkFailure, error_code: stack_pop_result)
