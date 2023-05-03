@@ -39,5 +39,19 @@ lto = true
 opt-level = "s"
 
 [features]
-default = []
+# The following features are available for testing.
+# Enabling them all at once takes up too much memory.
+# We could possibly fiddle with debugging symbol and linker options,
+# but adding features seems like a better choice.
+# Test the base system and library
+test-base = []
+# Test the queue implementation
+test-queue = []
+# Test the stack implementation
+test-stack = []
+
+default = ["test-base", "test-stack"]
+# default = ["test-base", "test-queue"]
+# default = ["test-base"]
 features = []
+

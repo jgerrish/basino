@@ -15,8 +15,12 @@ fn main() -> ! {
 
     let mut serial = arduino_hal::default_serial!(dp, pins, 57600);
 
+    #[cfg(feature = "test-base")]
     rust_basino::tests::run_tests(&mut serial);
+    #[cfg(feature = "test-queue")]
     rust_basino::queue::tests::run_tests(&mut serial);
+    #[cfg(feature = "test-stack")]
+    rust_basino::stack::tests::run_tests(&mut serial);
 
     loop {
         avr_device::asm::sleep();
