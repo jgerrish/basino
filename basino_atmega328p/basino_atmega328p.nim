@@ -18,6 +18,16 @@ type
     bottom*: ptr uint8
     top*: ptr uint8
 
+# Queue type
+type
+  Queue* {.packed.} = object
+    data*: ptr UncheckedArray[uint8]
+    start*: ptr uint8
+    queue_end*: ptr uint8
+    head*: ptr uint8
+    last_head*: ptr uint8
+    tail*: ptr uint8
+
 # Concatenate and send an arbitrary number of strings on the serial
 # channel.
 # This is actually an inefficient method, and shouldn't be used in a
@@ -114,6 +124,38 @@ for i in countup(1'u8, 32'u8):
 # This push should fail
 res = basino_stack_push(stack_addr, 33)
 send_test_result(res.kind == rkFailure, "Result of stack push 33: ", $res, "\r\n")
+
+
+# Test queue code
+var queue = Queue()
+var queue_data: array[0..32, uint8]
+queue.data = cast[ptr UncheckedArray[uint8]](queue_data.unsafeAddr)
+let queue_addr = addr queue
+# let stack_queue_start = addr queue.data[32]
+
+let queue_init_res = basino_queue_init(queue_addr, addr queue.data[0], addr queue.data[32])
+send_test_result(queue_init_res.kind == rkSuccessNil, "basino_queue_init worked", $queue_init_res, "\r\n")
+
+var queue_put_res = basino_queue_put(queue_addr, 5)
+send_test_result(
+  queue_put_res.kind == rkSuccessNil,
+  "Result of put of 5: ",
+  $queue_put_res, "\r\n"
+)
+
+var queue_get_res = basino_queue_get(queue_addr)
+send_test_result(queue_get_res.kind == rkSuccess, "Result of get: ", $queue_get_res, "\r\n")
+
+# Test getting from an empty queue
+var empty_queue_get_res = basino_queue_get(queue_addr)
+send_test_result(empty_queue_get_res.kind == rkFailure,
+                 "Result of empty queue get: ",
+                 $empty_queue_get_res,
+                 "\r\n"
+)
+
+
+# Start runtime loop
 
 while true:
   power_down()

@@ -14,109 +14,203 @@ use arduino_hal::{
 use crate::{
     basino_queue_get, basino_queue_get_head, basino_queue_get_last_head,
     basino_queue_get_queue_end, basino_queue_get_queue_start, basino_queue_get_tail,
-    basino_queue_init, basino_queue_put, BASINO_QUEUE,
+    basino_queue_init, basino_queue_put, Queue, QueueObj,
 };
+
+use core::fmt::{Debug, Display, Formatter};
+use ufmt::{uDebug, uWrite};
+
+/// The kinds of errors that can occur working with queues
+#[derive(Eq, PartialEq)]
+pub enum ErrorKind {
+    /// Queue is empty
+    QueueEmpty,
+    /// Queue is full
+    QueueFull,
+    /// A null pointer was passed in as a parameter or
+    /// would have been dereferenced
+    NullPointer,
+    /// Invalid arguments were passed into a function.
+    /// Example includes trying to initialize a queue with the start
+    /// greater than the end.
+    InvalidArguments,
+    /// An unknown error type
+    Unknown,
+}
+
+impl uDebug for ErrorKind {
+    fn fmt<T>(&self, f: &mut ufmt::Formatter<'_, T>) -> core::result::Result<(), T::Error>
+    where
+        T: uWrite + ?Sized,
+    {
+        match self {
+            ErrorKind::QueueEmpty => f.write_str("The queue is empty"),
+            ErrorKind::QueueFull => f.write_str("The queue is full"),
+            ErrorKind::NullPointer => f.write_str("A null pointer was passed in as a parameter"),
+            ErrorKind::InvalidArguments => f.write_str("Invalid arguments were passed in"),
+            ErrorKind::Unknown => f.write_str("An unknown error occurred"),
+        }
+    }
+}
+
+impl Display for ErrorKind {
+    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
+        match self {
+            ErrorKind::QueueEmpty => write!(f, "The queue is empty"),
+            ErrorKind::QueueFull => write!(f, "The queue is full"),
+            ErrorKind::NullPointer => write!(f, "A null pointer was passed in as a parameter"),
+            ErrorKind::InvalidArguments => write!(f, "Invalid arguments were passed in"),
+            ErrorKind::Unknown => write!(f, "An unknown error occurred"),
+        }
+    }
+}
+
+/// An error that can occur when working with a temperature server
+#[derive(PartialEq)]
+pub struct Error {
+    kind: ErrorKind,
+}
+
+impl Error {
+    /// Create a new Error with a given ErrorKind variant
+    pub fn new(kind: ErrorKind) -> Error {
+        Error { kind }
+    }
+}
+
+impl Debug for Error {
+    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
+        write!(f, "{}", self.kind)
+    }
+}
+
+impl Display for Error {
+    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
+        write!(f, "{}", self.kind)
+    }
+}
 
 /// Basic functions for a queue
 pub trait QueueImpl {
-    /// Initialize the stack
-    fn init(&self, writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>)
-        -> Result<(), u8>;
-
     /// Put or enqueue a value in the queue
-    fn put(&self, value: u8) -> Result<(), u8>;
+    fn put(&mut self, value: u8) -> Result<(), Error>;
 
     /// Get or dequeue a value from the queue
-    fn get(&self) -> Result<u8, u8>;
+    fn get(&mut self) -> Result<u8, Error>;
 
     // Debugging functions
 
     /// Get the start of the queue
-    fn get_start(&self) -> *const u16;
+    fn get_start(&mut self) -> *const u16;
     /// Get the end of the queue
-    fn get_end(&self) -> *const u16;
+    fn get_end(&mut self) -> *const u16;
 
     /// Get the current head of the queue
-    fn get_head(&self) -> *const u16;
+    fn get_head(&mut self) -> *const u16;
     /// Get the last head of the queue
-    fn get_last_head(&self) -> *const u16;
+    fn get_last_head(&mut self) -> *const u16;
     /// Get the current tail of the queue
-    fn get_tail(&self) -> *const u16;
+    fn get_tail(&mut self) -> *const u16;
 }
 
-impl QueueImpl for crate::Queue {
-    fn init(
-        &self,
-        writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
-    ) -> Result<(), u8> {
-        let res = queue_init_safe(writer);
-        res?;
+impl Queue {
+    fn new(
+        _writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
+        queue_array: &mut [u8],
+    ) -> Result<Self, Error> {
+        // Initialize the queue
+        // Set the queue start to the beginning of the queue array
+        let queue_start = queue_array.as_mut_ptr();
 
-        Ok(())
+        // Set the queue end to the start plus the length minus one
+        // Why minus one?  Not because of the head/tail limitations,
+        // but because start and end are pointers and for an array of length one
+        // they should point to the same element.
+        let queue_end = (queue_start as usize + queue_array.len() - 1) as *mut u8;
+
+        let mut queue = Self {
+            queue: QueueObj {
+                queue: core::ptr::null_mut::<u8>(),
+                start: core::ptr::null_mut::<u8>(),
+                end: core::ptr::null_mut::<u8>(),
+                head: core::ptr::null_mut::<u8>(),
+                last_head: core::ptr::null_mut::<u8>(),
+                tail: core::ptr::null_mut::<u8>(),
+            },
+            queue_len: queue_array.len(),
+        };
+
+        let res = unsafe {
+            basino_queue_init(
+                core::ptr::addr_of_mut!(queue.queue) as *mut QueueObj,
+                queue_start as *mut u8,
+                queue_end as *mut u8,
+            )
+        };
+
+        match res {
+            0 => Ok(queue),
+            1 => Err(Error::new(ErrorKind::NullPointer)),
+            2 => Err(Error::new(ErrorKind::InvalidArguments)),
+            _ => Err(Error::new(ErrorKind::Unknown)),
+        }
     }
+}
 
-    fn put(&self, value: u8) -> Result<(), u8> {
-        let result = unsafe { basino_queue_put(value) };
+impl QueueImpl for Queue {
+    fn put(&mut self, value: u8) -> Result<(), Error> {
+        let result = unsafe {
+            basino_queue_put(core::ptr::addr_of_mut!(self.queue) as *mut QueueObj, value)
+        };
 
         match result {
             0 => Ok(()),
-            e => Err(e),
+            1 => Err(Error::new(ErrorKind::NullPointer)),
+            2 => Err(Error::new(ErrorKind::QueueFull)),
+            _ => Err(Error::new(ErrorKind::Unknown)),
         }
     }
 
-    fn get(&self) -> Result<u8, u8> {
+    fn get(&mut self) -> Result<u8, Error> {
         let mut result: u8 = 0;
 
-        let res = unsafe { basino_queue_get(&mut result) };
+        let res = unsafe {
+            basino_queue_get(
+                core::ptr::addr_of_mut!(self.queue) as *mut QueueObj,
+                &mut result,
+            )
+        };
 
         match result {
             0 => Ok(res),
-            e => Err(e),
+            1 => Err(Error::new(ErrorKind::NullPointer)),
+            2 => Err(Error::new(ErrorKind::QueueEmpty)),
+            _ => Err(Error::new(ErrorKind::Unknown)),
         }
     }
 
     // Debugging functions
 
-    fn get_start(&self) -> *const u16 {
-        unsafe { basino_queue_get_queue_start() }
+    fn get_start(&mut self) -> *const u16 {
+        unsafe {
+            basino_queue_get_queue_start(core::ptr::addr_of_mut!(self.queue) as *mut QueueObj)
+        }
     }
 
-    fn get_end(&self) -> *const u16 {
-        unsafe { basino_queue_get_queue_end() }
+    fn get_end(&mut self) -> *const u16 {
+        unsafe { basino_queue_get_queue_end(core::ptr::addr_of_mut!(self.queue) as *mut QueueObj) }
     }
 
-    fn get_head(&self) -> *const u16 {
-        unsafe { basino_queue_get_head() }
+    fn get_head(&mut self) -> *const u16 {
+        unsafe { basino_queue_get_head(core::ptr::addr_of_mut!(self.queue) as *mut QueueObj) }
     }
 
-    fn get_last_head(&self) -> *const u16 {
-        unsafe { basino_queue_get_last_head() }
+    fn get_last_head(&mut self) -> *const u16 {
+        unsafe { basino_queue_get_last_head(core::ptr::addr_of_mut!(self.queue) as *mut QueueObj) }
     }
 
-    fn get_tail(&self) -> *const u16 {
-        unsafe { basino_queue_get_tail() }
-    }
-}
-
-/// Initialize the stacks
-pub fn queue_init_safe(
-    _writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
-) -> Result<(), u8> {
-    // Set the queue start to the beginning of the queue array
-    let queue_start = unsafe { BASINO_QUEUE.queue.as_mut_ptr() };
-
-    // Set the queue end to the start plus the length minus one
-    // Why minus one?
-    // Simple example: queue length of one, then the start and end
-    // address should be the same.  If we don't subtract one, the end
-    // would be beyond the length of the queue.
-    let queue_end = unsafe { (queue_start as usize + BASINO_QUEUE.queue.len() - 1) as *mut u8 };
-
-    let res = unsafe { basino_queue_init(queue_start as *mut u8, queue_end as *mut u8) };
-
-    match res {
-        0 => Ok(()),
-        r => Err(r),
+    fn get_tail(&mut self) -> *const u16 {
+        unsafe { basino_queue_get_tail(core::ptr::addr_of_mut!(self.queue) as *mut QueueObj) }
     }
 }
 
@@ -124,7 +218,13 @@ pub fn queue_init_safe(
 /// This doesn't use the standard Rust testing framework.  Instead it's a normal
 /// public module that can be called by other systems.
 pub mod tests {
-    use crate::{queue::QueueImpl, tests::write_test_result, BASINO_QUEUE};
+    use crate::{
+        queue::QueueImpl,
+        queue::{ErrorKind, Queue},
+        tests::write_test_result,
+        BASINO_QUEUE_DATA,
+    };
+
     use arduino_hal::{
         hal::port::{PD0, PD1},
         pac::USART0,
@@ -140,15 +240,20 @@ pub mod tests {
         test_queue_init_works(writer);
         test_queue_empty_get_fails(writer);
         test_queue_put_works(writer);
+        test_queue_put_twice_works(writer);
         test_queue_put_fill_works(writer);
         test_queue_put_and_get_fill_works(writer);
         test_queue_head_wraps_works(writer);
+        test_queue_head_wraps_nonfilled_works(writer);
+        test_queue_head_wraps_nonemptied_works(writer);
+        test_queue_last_head_update(writer);
     }
 
     /// Test that initializing the queue works
     pub fn test_queue_init_works(writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) {
-        let queue = unsafe { &BASINO_QUEUE };
-        let res = queue.init(writer);
+        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
+        let res = Queue::new(writer, basino_queue_data);
+
         write_test_result(writer, res.is_ok(), "should initialize queue");
     }
 
@@ -156,18 +261,20 @@ pub mod tests {
     pub fn test_queue_empty_get_fails(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let queue = unsafe { &BASINO_QUEUE };
-        let _res = queue.init(writer);
+        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
+        let mut queue = Queue::new(writer, basino_queue_data).unwrap();
+
         let res = queue.get();
         write_test_result(writer, res.is_err(), "get from empty queue should fail");
     }
 
-    /// Test that initializing the queue works
+    /// Test that putting an item into the queue works
     pub fn test_queue_put_works(writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) {
-        let queue = unsafe { &BASINO_QUEUE };
-        let _res = queue.init(writer);
+        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
+        let mut queue = Queue::new(writer, basino_queue_data).unwrap();
 
         let res = queue.put(5);
+
         write_test_result(writer, res.is_ok(), "should put 5 into queue");
 
         let res = queue.get();
@@ -183,34 +290,87 @@ pub mod tests {
         }
     }
 
+    /// Test that putting two items and getting two items from the queue works
+    /// This puts both items first, then gets both items.
+    pub fn test_queue_put_twice_works(
+        writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
+    ) {
+        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
+        let mut queue = Queue::new(writer, basino_queue_data).unwrap();
+
+        // First, put both items
+
+        let res = queue.put(5);
+
+        write_test_result(writer, res.is_ok(), "should put 5 into queue");
+        let res = queue.put(3);
+
+        write_test_result(writer, res.is_ok(), "should put 3 into queue");
+
+        // Now get both items
+
+        let res = queue.get();
+
+        match res {
+            Ok(v) => {
+                write_test_result(writer, v == 5, "get should return 5");
+            }
+            Err(_e) => {
+                write_test_result(writer, false, "get should be ok and return 5");
+            }
+        }
+        let res = queue.get();
+
+        match res {
+            Ok(v) => {
+                write_test_result(writer, v == 3, "get should return 3");
+            }
+            Err(_e) => {
+                write_test_result(writer, false, "get should be ok and return 3");
+            }
+        }
+    }
+
     /// Test that filling the queue works
     pub fn test_queue_put_fill_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let queue = unsafe { &BASINO_QUEUE };
-        let _res = queue.init(writer);
+        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
+        let mut queue = Queue::new(writer, basino_queue_data).unwrap();
 
-        for i in 1..queue.queue.len() {
+        for i in 1..queue.queue_len {
             let res = queue.put((i % 256) as u8);
             write_test_result(writer, res.is_ok(), "should be able to fill queue");
         }
 
         let res = queue.put(130_u8);
         write_test_result(writer, res.is_err(), "last put to full queue should fail");
+        match res {
+            Err(e) => {
+                write_test_result(
+                    writer,
+                    e.kind == ErrorKind::QueueFull,
+                    "last put should fail with QueueFull error",
+                );
+            }
+            _ => {
+                write_test_result(writer, false, "last put should fail with QueueFull error");
+            }
+        }
     }
 
     /// Test that filling the queue and getting all the values works
     pub fn test_queue_put_and_get_fill_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let queue = unsafe { &BASINO_QUEUE };
-        let _res = queue.init(writer);
+        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
+        let mut queue = Queue::new(writer, basino_queue_data).unwrap();
 
-        for i in 1..queue.queue.len() {
+        for i in 1..queue.queue_len {
             let _res = queue.put((i % 256) as u8);
         }
 
-        for i in 1..queue.queue.len() {
+        for i in 1..queue.queue_len {
             let res = queue.get();
             write_test_result(
                 writer,
@@ -225,8 +385,8 @@ pub mod tests {
     pub fn test_queue_put_get_put_fill_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let queue = unsafe { &BASINO_QUEUE };
-        let _res = queue.init(writer);
+        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
+        let mut queue = Queue::new(writer, basino_queue_data).unwrap();
 
         let res = queue.put(0x23_u8);
         write_test_result(writer, res.is_ok(), "single put of 0x23 should work");
@@ -235,7 +395,7 @@ pub mod tests {
         write_test_result(writer, res.is_ok(), "single get should work");
         write_test_result(writer, res.unwrap() == 0x23, "single get should equal 0x23");
 
-        for i in 1..queue.queue.len() {
+        for i in 1..queue.queue_len {
             let res = queue.put((i % 256) as u8);
             write_test_result(writer, res.is_ok(), "should be able to fill queue");
         }
@@ -248,15 +408,18 @@ pub mod tests {
     pub fn test_queue_head_wraps_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let queue = unsafe { &BASINO_QUEUE };
-        let _res = queue.init(writer);
+        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
+        let mut queue = Queue::new(writer, basino_queue_data).unwrap();
 
-        for i in 1..queue.queue.len() {
+        // ufmt::uwriteln!(writer, "array: {:?}", unsafe { BASINO_QUEUE_DATA }).unwrap();
+        // for i in 1..queue.queue_len goes from 1 to (queue.queue_len - 1) inclusive
+        // So, if queue.queue_len is 4, this iterates through [1, 2, 3]
+        for i in 1..queue.queue_len {
             let res = queue.put((i % 256) as u8);
             write_test_result(writer, res.is_ok(), "should be able to fill queue");
         }
 
-        for i in 1..queue.queue.len() {
+        for i in 1..queue.queue_len {
             let res = queue.get();
             write_test_result(
                 writer,
@@ -265,21 +428,172 @@ pub mod tests {
             );
         }
 
-        for i in 1..=10 {
+        for i in 1..=2 {
             let res = queue.put(i as u8);
             write_test_result(
                 writer,
                 res.is_ok(),
-                "should be able to put in 10 more values",
+                "should be able to put in 2 more values",
             );
         }
 
-        for i in 1..=10 {
+        for i in 1..=2 {
             let res = queue.get();
             write_test_result(
                 writer,
                 res.unwrap() == (i as u8),
                 "should be able to get values",
+            );
+        }
+    }
+
+    /// Test a case where the head wraps around
+    /// This tests a case where we don't fill the queue all the way,
+    /// then read those values, then try to wrap
+    pub fn test_queue_head_wraps_nonfilled_works(
+        writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
+    ) {
+        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
+        let mut queue = Queue::new(writer, basino_queue_data).unwrap();
+
+        // for i in 1..queue.queue_len goes from 1 to (queue.queue_len - 1) inclusive
+        // So, if queue.queue_len is 4, this iterates through [1, 2, 3]
+        for i in 1..=2 {
+            let res = queue.put((i % 256) as u8);
+            write_test_result(writer, res.is_ok(), "should be able to fill queue");
+        }
+
+        for i in 1..=2 {
+            let res = queue.get();
+            write_test_result(
+                writer,
+                res.unwrap() == ((i % 256) as u8),
+                "should be able to get filled values ",
+            );
+        }
+
+        for i in 1..=2 {
+            let res = queue.put(i as u8);
+            write_test_result(
+                writer,
+                res.is_ok(),
+                "should be able to put in 2 more values",
+            );
+        }
+
+        for i in 1..=2 {
+            let res = queue.get();
+            write_test_result(
+                writer,
+                res.unwrap() == (i as u8),
+                "should be able to get values",
+            );
+        }
+
+        // The queue should now be empty
+        let res = queue.get();
+        write_test_result(writer, res.is_err(), "get from empty queue should fail");
+    }
+
+    /// Test where we wrap the tail and head with gets in between filling the queue
+    /// Don't empty the queue all the way when getting values before the wrap
+    pub fn test_queue_head_wraps_nonemptied_works(
+        writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
+    ) {
+        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
+        let mut queue = Queue::new(writer, basino_queue_data).unwrap();
+
+        // put in two items [1, 2]
+        for i in [1, 2] {
+            let res = queue.put((i % 256) as u8);
+            write_test_result(writer, res.is_ok(), "should be able to put in two items");
+        }
+
+        // Remove one item
+        let res = queue.get();
+        write_test_result(
+            writer,
+            res.unwrap() == 1_u8,
+            "should be able to get one item ",
+        );
+
+        // Put in two items, [3, 4]
+        for i in [3, 4] {
+            let res = queue.put(i as u8);
+            write_test_result(
+                writer,
+                res.is_ok(),
+                "should be able to put in 2 more values",
+            );
+        }
+
+        // Get three items
+        for i in [2, 3, 4] {
+            let res = queue.get();
+            write_test_result(
+                writer,
+                res.unwrap() == (i as u8),
+                "should be able to get all values",
+            );
+        }
+
+        // The queue should now be empty
+        let res = queue.get();
+        write_test_result(writer, res.is_err(), "get from empty queue should fail");
+    }
+
+    /// Test a case where the last head wasn't being updated in the
+    /// end-of-queue code path
+    pub fn test_queue_last_head_update(
+        writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
+    ) {
+        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
+        let mut queue = Queue::new(writer, basino_queue_data).unwrap();
+
+        // for i in 1..queue.queue_len goes from 1 to (queue.queue_len - 1) inclusive
+        // So, if queue.queue_len is 4, this iterates through [1, 2, 3]
+        for i in 1..=2 {
+            let res = queue.put((i % 256) as u8);
+            write_test_result(writer, res.is_ok(), "should be able to fill queue");
+        }
+
+        for i in 1..=2 {
+            let res = queue.get();
+            write_test_result(
+                writer,
+                res.unwrap() == ((i % 256) as u8),
+                "should be able to get filled values ",
+            );
+        }
+
+        for i in 1..=2 {
+            let res = queue.put(i as u8);
+            write_test_result(
+                writer,
+                res.is_ok(),
+                "should be able to put in 2 more values",
+            );
+        }
+
+        for i in 1..=2 {
+            let res = queue.get();
+            write_test_result(
+                writer,
+                res.unwrap() == (i as u8),
+                "should be able to get values",
+            );
+        }
+
+        // The queue should now be empty
+        let res = queue.get();
+        write_test_result(writer, res.is_err(), "get from empty queue should fail");
+
+        for i in 1..=3 {
+            let res = queue.put(i as u8);
+            write_test_result(
+                writer,
+                res.is_ok(),
+                "should be able to put in 3 more values",
             );
         }
     }

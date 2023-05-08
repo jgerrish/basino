@@ -13,8 +13,10 @@ license = "MIT"
 [dependencies]
 embedded-hal = "0.2.7"
 panic-halt = "0.2.0"
-# simavr-sim = "0.1"
 ufmt = "0.2"
+
+# [dev-dependencies]
+# simavr-sim = "0.1"
 
 [dependencies.arduino-hal]
 version = "0.1"
@@ -50,8 +52,7 @@ test-queue = []
 # Test the stack implementation
 test-stack = []
 
-default = ["test-base", "test-stack"]
-# default = ["test-base", "test-queue"]
+# default = ["test-base", "test-stack"]
+default = ["test-base", "test-queue"]
 # default = ["test-base"]
 features = []
-

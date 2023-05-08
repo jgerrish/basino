@@ -14,10 +14,12 @@ target = "avr-specs/avr-atmega328p.json"
 
 [target.'cfg(target_arch = "avr")']
 # runner = "ravedude uno -cb 57600"
-runner = "run_avr --mcu atmega328p"
+# runner = "simavr -g --mcu atmega328p"
+runner = "simavr --mcu atmega328p"
 # runner = "run_avr --mcu atmega328p"
-# runner = "qemu-system-avr -s -S -M uno -nographic -serial mon:stdio -bios "
-# runner = "qemu-system-avr -M uno -nographic -serial mon:stdio -bios "
+# runner = "run_avr --mcu atmega328p"
+# runner = "qemu-system-avr -s -S -M uno -nographic -chardev stdio,mux=on,id=char0 -mon chardev=char0,mode=readline -serial chardev:char0 -bios "
+# runner = "qemu-system-avr -M uno -nographic -chardev stdio,mux=on,id=char0 -mon chardev=char0,mode=readline -serial chardev:char0 -bios "
 
 [unstable]
 build-std = ["core"]

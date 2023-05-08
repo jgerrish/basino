@@ -103,3 +103,55 @@ proc basino_stack_pop*(stack: pointer): Result[uint8] =
     result = Result[uint8](kind: rkSuccess, val: res)
   else:
     result = Result[uint8](kind: rkFailure, error_code: stack_pop_result)
+
+
+
+
+
+
+proc basino_queue_init_c*(queue: pointer, start: pointer, queue_end: pointer): uint8 {.importc: "basino_queue_init", cdecl.}
+
+proc basino_queue_init*(queue: pointer, start: pointer, queue_end: pointer): Result[uint8] =
+  let res = basino_queue_init_c(queue, start, queue_end)
+  if res == 0:
+    result = Result[uint8](kind: rkSuccessNil)
+  else:
+    result = Result[uint8](kind: rkFailure, error_code: res)
+
+# Test setting and getting the stack bottom, size, and stack start
+# This also lets us test 16-bit return values
+# The addresses should be consistent with a 128-byte change
+proc basino_queue_get_queue_start*(queue: pointer): uint16 {.importc: "basino_queue_get_queue_start", cdecl.}
+
+proc basino_queue_get_queue_end*(queue: pointer): uint16 {.importc: "basino_queue_get_queue_end", cdecl.}
+
+proc basino_queue_get_head*(queue: pointer): uint16 {.importc: "basino_queue_get_head", cdecl.}
+
+proc basino_queue_get_last_head*(queue: pointer): uint16 {.importc: "basino_queue_get_end", cdecl.}
+
+proc basino_queue_get_tail*(queue: pointer): uint16 {.importc: "basino_queue_get_tail", cdecl.}
+
+proc basino_queue_put_c*(queue: pointer, value: uint8): uint8 {.importc: "basino_queue_put", cdecl.}
+
+# TODO: Still not ideal result type definition.  The unnecessary uint8
+# isn't good.
+# But it's better than simple integer return types.
+proc basino_queue_put*(queue: pointer, value: uint8): Result[uint8] =
+  let res = basino_queue_put_c(queue, value)
+  if res == 0:
+    result = Result[uint8](kind: rkSuccessNil)
+  else:
+    result = Result[uint8](kind: rkFailure, error_code: res)
+
+proc basino_queue_get_c*(stack: pointer, res: pointer): uint8 {.importc: "basino_queue_get", cdecl.}
+
+proc basino_queue_get*(queue: pointer): Result[uint8] =
+  # Declare the result with var so it's mutable
+  var queue_get_result = 0'u8
+  let queue_get_result_addr = addr queue_get_result
+
+  let res = basino_queue_get_c(queue, queue_get_result_addr)
+  if queue_get_result == 0:
+    result = Result[uint8](kind: rkSuccess, val: res)
+  else:
+    result = Result[uint8](kind: rkFailure, error_code: queue_get_result)

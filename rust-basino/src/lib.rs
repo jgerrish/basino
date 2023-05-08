@@ -5,6 +5,8 @@
 #![feature(abi_avr_interrupt)]
 #![feature(ptr_from_ref)]
 
+use ufmt::{uDebug, uWrite};
+
 /// Error data types
 pub mod error;
 
@@ -44,23 +46,54 @@ pub struct Stack {
 }
 
 /// The Queue data structure
-pub struct Queue {
+#[repr(C)]
+pub struct QueueObj {
     /// The actual queue array which holds the data
-    pub queue: [u8; 32],
-    // /// The address of the start of the queue
-    // pub start: *mut u8,
-    // /// The address of the end of the queue
-    // pub end: *mut u8,
-    // /// The current head in the queue
-    // /// The head points to the location of the current item to be
-    // /// returned with a get operation.
-    // pub head: *mut u8,
-    // /// The last head position in the queue
-    // pub last_head: *mut u8,
-    // /// The current tail of the queue
-    // /// The tail points to the the location where the next item will
-    // /// be put.
-    // pub tail: *mut u8,
+    pub queue: *mut u8,
+    /// The address of the start of the queue
+    pub start: *const u8,
+    /// The address of the end of the queue
+    pub end: *const u8,
+    /// The current head in the queue
+    /// The head points to the location of the current item to be
+    /// returned with a get operation.
+    pub head: *mut u8,
+    /// The last head position in the queue
+    pub last_head: *mut u8,
+    /// The current tail of the queue
+    /// The tail points to the the location where the next item will
+    /// be put.
+    pub tail: *mut u8,
+}
+
+/// Queue data structure with length field.
+/// This can be simplified after the initial structure refactor is
+/// done.
+pub struct Queue {
+    /// The actual queue object
+    pub queue: QueueObj,
+    /// Length of the queue.
+    pub queue_len: usize,
+}
+
+impl uDebug for Queue {
+    fn fmt<T>(&self, f: &mut ufmt::Formatter<'_, T>) -> core::result::Result<(), T::Error>
+    where
+        T: uWrite + ?Sized,
+    {
+        f.write_str("  queue head 0x")?;
+        ufmt::uDisplay::fmt(&(self.queue.head as usize), f)?;
+        f.write_str(", last head: 0x")?;
+        ufmt::uDisplay::fmt(&(self.queue.last_head as usize), f)?;
+        f.write_str(", head item: 0x")?;
+        ufmt::uDisplay::fmt(&(unsafe { *(self.queue.head) }), f)?;
+        f.write_str(", tail: 0x")?;
+        ufmt::uDisplay::fmt(&(self.queue.tail as usize), f)?;
+        f.write_str(", start: 0x")?;
+        ufmt::uDisplay::fmt(&(self.queue.start as usize), f)?;
+        f.write_str(", end: 0x")?;
+        ufmt::uDisplay::fmt(&(self.queue.end as usize), f)
+    }
 }
 
 /// Technically, on embedded devices with limited memory, even
@@ -114,14 +147,12 @@ pub static mut BASINO_STACK_BUFFER: [u8; 33] = [0; 33];
 
 /// The queue object we pass into the C / assembly code to store data
 #[link_section = ".ram2bss"]
-pub static mut BASINO_QUEUE_DATA: [u8; 32] = [0; 32];
+pub static mut BASINO_QUEUE_DATA: [u8; 4] = [0; 4];
 
 /// The queue object we pass into the C / assembly code to store data
 /// This should be initialized by the code before being used
 #[link_section = ".ram2bss"]
-pub static mut BASINO_QUEUE: Queue = Queue {
-    queue: unsafe { BASINO_QUEUE_DATA },
-};
+pub static mut BASINO_QUEUE: Option<Queue> = None;
 
 #[link(name = "basino")]
 extern "C" {
@@ -166,29 +197,29 @@ extern "C" {
     // pub fn basino_get_basino_stack_size(stack: *const Stack) -> u;
 
     /// Initialize the queue
-    pub fn basino_queue_init(start: *mut u8, end: *mut u8) -> u8;
+    pub fn basino_queue_init(queue: *mut QueueObj, start: *mut u8, end: *mut u8) -> u8;
 
     /// Put an item into the queue
-    pub fn basino_queue_put(value: u8) -> u8;
+    pub fn basino_queue_put(queue: *const QueueObj, value: u8) -> u8;
 
     /// Get an item from the queue
-    pub fn basino_queue_get(result: *mut u8) -> u8;
+    pub fn basino_queue_get(queue: *const QueueObj, result: *mut u8) -> u8;
 
     // Info functions
 
     /// Get the start of the queue
-    pub fn basino_queue_get_queue_start() -> *const u16;
+    pub fn basino_queue_get_queue_start(queue: *mut QueueObj) -> *const u16;
     /// Get the end of the queue
-    pub fn basino_queue_get_queue_end() -> *const u16;
+    pub fn basino_queue_get_queue_end(queue: *mut QueueObj) -> *const u16;
     /// Get the current head of the queue
-    pub fn basino_queue_get_head() -> *const u16;
+    pub fn basino_queue_get_head(queue: *mut QueueObj) -> *const u16;
     /// Get the last head of the queue
-    pub fn basino_queue_get_last_head() -> *const u16;
+    pub fn basino_queue_get_last_head(queue: *mut QueueObj) -> *const u16;
     /// Get the current tail of the queue
-    pub fn basino_queue_get_tail() -> *const u16;
+    pub fn basino_queue_get_tail(queue: *mut QueueObj) -> *const u16;
 }
 
-/// Test module for the top-level Forth system
+/// Test module for the top-level Tiny BASIC system
 #[allow(unused_imports)]
 pub mod tests {
     use crate::{basino_gt, basino_gt_eq};

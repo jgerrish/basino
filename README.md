@@ -88,11 +88,26 @@ $ cd basino_atmega328p
 $ ratel build
 
 Run with sim-avr
-$ run_avr --mcu atmega328p basino_atmega328p
+$ run\_avr --mcu atmega328p basino\_atmega328p
 or with QEMU:
 $ qemu-system-avr -M uno -nographic -serial mon:stdio -bios basino_atmega328p
 
 ## Debugging
+
+### Rust
+
+Steps to get running and debugging:
+
+In one terminal:
+
+cd rust-basino
+cargo run
+
+In another terminal:
+
+avr-gdb -x basino/avr.gdb -d basino /rust-basino/target/avr-atmega328p/debug/rust-basino.elf
+
+### Nim
 
 Steps to get running and debugging:
 
@@ -102,4 +117,5 @@ qemu-system-avr -s -S -M uno -nographic -serial mon:stdio -bios basino_atmega328
 
 In another terminal:
 
-./basino/nim-avr-gdb ./basino_atmega328p/basino_atmega328p
+./basino/nim-avr-gdb ./basino\_atmega328p/basino_atmega328p
+
