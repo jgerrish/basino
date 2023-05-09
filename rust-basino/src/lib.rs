@@ -208,15 +208,15 @@ extern "C" {
     // Info functions
 
     /// Get the start of the queue
-    pub fn basino_queue_get_queue_start(queue: *mut QueueObj) -> *const u16;
+    pub fn basino_queue_get_queue_start(queue: *mut QueueObj, result: *mut u8) -> *const u8;
     /// Get the end of the queue
-    pub fn basino_queue_get_queue_end(queue: *mut QueueObj) -> *const u16;
+    pub fn basino_queue_get_queue_end(queue: *mut QueueObj, result: *mut u8) -> *const u8;
     /// Get the current head of the queue
-    pub fn basino_queue_get_head(queue: *mut QueueObj) -> *const u16;
+    pub fn basino_queue_get_head(queue: *mut QueueObj, result: *mut u8) -> *const u8;
     /// Get the last head of the queue
-    pub fn basino_queue_get_last_head(queue: *mut QueueObj) -> *const u16;
+    pub fn basino_queue_get_last_head(queue: *mut QueueObj, result: *mut u8) -> *const u8;
     /// Get the current tail of the queue
-    pub fn basino_queue_get_tail(queue: *mut QueueObj) -> *const u16;
+    pub fn basino_queue_get_tail(queue: *mut QueueObj, result: *mut u8) -> *const u8;
 }
 
 /// Test module for the top-level Tiny BASIC system

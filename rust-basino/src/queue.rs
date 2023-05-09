@@ -101,16 +101,16 @@ pub trait QueueImpl {
     // Debugging functions
 
     /// Get the start of the queue
-    fn get_start(&mut self) -> *const u16;
+    fn get_start(&mut self) -> Result<*const u8, Error>;
     /// Get the end of the queue
-    fn get_end(&mut self) -> *const u16;
+    fn get_end(&mut self) -> Result<*const u8, Error>;
 
     /// Get the current head of the queue
-    fn get_head(&mut self) -> *const u16;
+    fn get_head(&mut self) -> Result<*const u8, Error>;
     /// Get the last head of the queue
-    fn get_last_head(&mut self) -> *const u16;
+    fn get_last_head(&mut self) -> Result<*const u8, Error>;
     /// Get the current tail of the queue
-    fn get_tail(&mut self) -> *const u16;
+    fn get_tail(&mut self) -> Result<*const u8, Error>;
 }
 
 impl Queue {
@@ -191,26 +191,79 @@ impl QueueImpl for Queue {
 
     // Debugging functions
 
-    fn get_start(&mut self) -> *const u16 {
-        unsafe {
-            basino_queue_get_queue_start(core::ptr::addr_of_mut!(self.queue) as *mut QueueObj)
+    fn get_start(&mut self) -> Result<*const u8, Error> {
+        let mut result: u8 = 0;
+        let res = unsafe {
+            basino_queue_get_queue_start(
+                core::ptr::addr_of_mut!(self.queue) as *mut QueueObj,
+                core::ptr::addr_of_mut!(result),
+            )
+        };
+        match result {
+            0 => Ok(res),
+            1 => Err(Error::new(ErrorKind::NullPointer)),
+            _ => Err(Error::new(ErrorKind::Unknown)),
         }
     }
 
-    fn get_end(&mut self) -> *const u16 {
-        unsafe { basino_queue_get_queue_end(core::ptr::addr_of_mut!(self.queue) as *mut QueueObj) }
+    fn get_end(&mut self) -> Result<*const u8, Error> {
+        let mut result: u8 = 0;
+        let res = unsafe {
+            basino_queue_get_queue_end(
+                core::ptr::addr_of_mut!(self.queue) as *mut QueueObj,
+                core::ptr::addr_of_mut!(result),
+            )
+        };
+        match result {
+            0 => Ok(res),
+            1 => Err(Error::new(ErrorKind::NullPointer)),
+            _ => Err(Error::new(ErrorKind::Unknown)),
+        }
     }
 
-    fn get_head(&mut self) -> *const u16 {
-        unsafe { basino_queue_get_head(core::ptr::addr_of_mut!(self.queue) as *mut QueueObj) }
+    fn get_head(&mut self) -> Result<*const u8, Error> {
+        let mut result: u8 = 0;
+        let res = unsafe {
+            basino_queue_get_head(
+                core::ptr::addr_of_mut!(self.queue) as *mut QueueObj,
+                core::ptr::addr_of_mut!(result),
+            )
+        };
+        match result {
+            0 => Ok(res),
+            1 => Err(Error::new(ErrorKind::NullPointer)),
+            _ => Err(Error::new(ErrorKind::Unknown)),
+        }
     }
 
-    fn get_last_head(&mut self) -> *const u16 {
-        unsafe { basino_queue_get_last_head(core::ptr::addr_of_mut!(self.queue) as *mut QueueObj) }
+    fn get_last_head(&mut self) -> Result<*const u8, Error> {
+        let mut result: u8 = 0;
+        let res = unsafe {
+            basino_queue_get_last_head(
+                core::ptr::addr_of_mut!(self.queue) as *mut QueueObj,
+                core::ptr::addr_of_mut!(result),
+            )
+        };
+        match result {
+            0 => Ok(res),
+            1 => Err(Error::new(ErrorKind::NullPointer)),
+            _ => Err(Error::new(ErrorKind::Unknown)),
+        }
     }
 
-    fn get_tail(&mut self) -> *const u16 {
-        unsafe { basino_queue_get_tail(core::ptr::addr_of_mut!(self.queue) as *mut QueueObj) }
+    fn get_tail(&mut self) -> Result<*const u8, Error> {
+        let mut result: u8 = 0;
+        let res = unsafe {
+            basino_queue_get_tail(
+                core::ptr::addr_of_mut!(self.queue) as *mut QueueObj,
+                core::ptr::addr_of_mut!(result),
+            )
+        };
+        match result {
+            0 => Ok(res),
+            1 => Err(Error::new(ErrorKind::NullPointer)),
+            _ => Err(Error::new(ErrorKind::Unknown)),
+        }
     }
 }
 
@@ -219,8 +272,11 @@ impl QueueImpl for Queue {
 /// public module that can be called by other systems.
 pub mod tests {
     use crate::{
-        queue::QueueImpl,
-        queue::{ErrorKind, Queue},
+        queue::{
+            basino_queue_get, basino_queue_get_head, basino_queue_get_last_head,
+            basino_queue_get_queue_end, basino_queue_get_queue_start, basino_queue_get_tail,
+            basino_queue_init, basino_queue_put, ErrorKind, Queue, QueueImpl, QueueObj,
+        },
         tests::write_test_result,
         BASINO_QUEUE_DATA,
     };
@@ -247,6 +303,19 @@ pub mod tests {
         test_queue_head_wraps_nonfilled_works(writer);
         test_queue_head_wraps_nonemptied_works(writer);
         test_queue_last_head_update(writer);
+        test_queue_init_null_queue_fails(writer);
+        test_queue_basino_queue_put_null_queue_fails(writer);
+        test_queue_basino_queue_get_null_queue_fails(writer);
+        test_queue_basino_queue_get_last_head_null_queue_fails(writer);
+        test_queue_basino_queue_get_head_null_queue_fails(writer);
+        test_queue_basino_queue_get_tail_null_queue_fails(writer);
+        test_queue_basino_queue_get_queue_start_null_queue_fails(writer);
+        test_queue_basino_queue_get_queue_end_null_queue_fails(writer);
+        test_queue_basino_queue_get_last_head_works(writer);
+        test_queue_basino_queue_get_head_works(writer);
+        test_queue_basino_queue_get_tail_works(writer);
+        test_queue_basino_queue_get_queue_start_works(writer);
+        test_queue_basino_queue_get_queue_end_works(writer);
     }
 
     /// Test that initializing the queue works
@@ -596,5 +665,244 @@ pub mod tests {
                 "should be able to put in 3 more values",
             );
         }
+    }
+
+    /// Test that init with a NULL queue pointer fails
+    pub fn test_queue_init_null_queue_fails(
+        writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
+    ) {
+        let queue_start_ptr = unsafe { core::ptr::addr_of_mut!(BASINO_QUEUE_DATA) as *mut u8 };
+        let len = unsafe { BASINO_QUEUE_DATA.len() };
+
+        let queue_end_ptr: *mut u8 = (queue_start_ptr as usize + len - 1) as *mut u8;
+
+        let res = unsafe {
+            basino_queue_init(
+                core::ptr::null_mut::<u16>() as *mut QueueObj,
+                queue_start_ptr as *mut u8,
+                queue_end_ptr as *mut u8,
+            )
+        };
+
+        write_test_result(writer, res == 1, "init should fail with null queue pointer");
+    }
+
+    /// Test that get with a NULL queue pointer fails
+    /// Tests the raw error code
+    pub fn test_queue_basino_queue_get_null_queue_fails(
+        writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
+    ) {
+        let mut result: u8 = 0;
+        let _res = unsafe {
+            basino_queue_get(
+                core::ptr::null_mut::<u16>() as *mut QueueObj,
+                core::ptr::addr_of_mut!(result),
+            )
+        };
+
+        write_test_result(
+            writer,
+            result == 1,
+            "get should fail with null queue pointer",
+        );
+    }
+
+    /// Test that put with a NULL queue pointer fails
+    /// Tests the raw error code
+    pub fn test_queue_basino_queue_put_null_queue_fails(
+        writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
+    ) {
+        let res = unsafe { basino_queue_put(core::ptr::null_mut::<u16>() as *mut QueueObj, 5) };
+
+        write_test_result(writer, res == 1, "put should fail with null queue pointer");
+    }
+
+    /// Test that put with a NULL queue pointer fails
+    /// Tests the raw error code
+    pub fn test_queue_basino_queue_get_last_head_null_queue_fails(
+        writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
+    ) {
+        let mut result: u8 = 0;
+        let _res = unsafe {
+            basino_queue_get_last_head(
+                core::ptr::null_mut::<u16>() as *mut QueueObj,
+                core::ptr::addr_of_mut!(result),
+            )
+        };
+
+        write_test_result(
+            writer,
+            result == 1,
+            "put should fail with null queue pointer",
+        );
+    }
+
+    /// Test that put with a NULL queue pointer fails
+    /// Tests the raw error code
+    pub fn test_queue_basino_queue_get_head_null_queue_fails(
+        writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
+    ) {
+        let mut result: u8 = 0;
+        let _res = unsafe {
+            basino_queue_get_head(
+                core::ptr::null_mut::<u16>() as *mut QueueObj,
+                core::ptr::addr_of_mut!(result),
+            )
+        };
+
+        write_test_result(
+            writer,
+            result == 1,
+            "put should fail with null queue pointer",
+        );
+    }
+
+    /// Test that put with a NULL queue pointer fails
+    /// Tests the raw error code
+    pub fn test_queue_basino_queue_get_tail_null_queue_fails(
+        writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
+    ) {
+        let mut result: u8 = 0;
+        let _res = unsafe {
+            basino_queue_get_tail(
+                core::ptr::null_mut::<u16>() as *mut QueueObj,
+                core::ptr::addr_of_mut!(result),
+            )
+        };
+
+        write_test_result(
+            writer,
+            result == 1,
+            "put should fail with null queue pointer",
+        );
+    }
+
+    /// Test that put with a NULL queue pointer fails
+    /// Tests the raw error code
+    pub fn test_queue_basino_queue_get_queue_start_null_queue_fails(
+        writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
+    ) {
+        let mut result: u8 = 0;
+        let _res = unsafe {
+            basino_queue_get_queue_start(
+                core::ptr::null_mut::<u16>() as *mut QueueObj,
+                core::ptr::addr_of_mut!(result),
+            )
+        };
+
+        write_test_result(
+            writer,
+            result == 1,
+            "put should fail with null queue pointer",
+        );
+    }
+
+    /// Test that put with a NULL queue pointer fails
+    /// Tests the raw error code
+    pub fn test_queue_basino_queue_get_queue_end_null_queue_fails(
+        writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
+    ) {
+        let mut result: u8 = 0;
+        let _res = unsafe {
+            basino_queue_get_queue_end(
+                core::ptr::null_mut::<u16>() as *mut QueueObj,
+                core::ptr::addr_of_mut!(result),
+            )
+        };
+
+        write_test_result(
+            writer,
+            result == 1,
+            "put should fail with null queue pointer",
+        );
+    }
+
+    // Test the debugging functions
+
+    /// Test that get_last_head works
+    pub fn test_queue_basino_queue_get_last_head_works(
+        writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
+    ) {
+        let queue_start = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
+        let queue_end = (queue_start as usize + unsafe { BASINO_QUEUE_DATA.len() } - 1) as *mut u8;
+        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
+        let mut queue = Queue::new(writer, basino_queue_data).unwrap();
+
+        let last_head = queue.get_last_head();
+
+        write_test_result(
+            writer,
+            last_head.unwrap() == queue_end,
+            "get_last_head should return correct value",
+        );
+    }
+
+    /// Test that get_last_head works
+    pub fn test_queue_basino_queue_get_head_works(
+        writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
+    ) {
+        let queue_start = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
+        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
+        let mut queue = Queue::new(writer, basino_queue_data).unwrap();
+
+        let head = queue.get_head();
+
+        write_test_result(
+            writer,
+            head.unwrap() == queue_start,
+            "get_head should return correct value",
+        );
+    }
+
+    /// Test that get_last_head works
+    pub fn test_queue_basino_queue_get_tail_works(
+        writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
+    ) {
+        let queue_start = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
+        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
+        let mut queue = Queue::new(writer, basino_queue_data).unwrap();
+
+        let tail = queue.get_tail();
+
+        write_test_result(
+            writer,
+            tail.unwrap() == queue_start,
+            "get_tail should return correct value",
+        );
+    }
+
+    /// Test that get_last_head works
+    pub fn test_queue_basino_queue_get_queue_start_works(
+        writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
+    ) {
+        let queue_start = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
+        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
+        let mut queue = Queue::new(writer, basino_queue_data).unwrap();
+
+        let res = queue.get_start();
+
+        write_test_result(
+            writer,
+            res.unwrap() == queue_start,
+            "get_start should return correct value",
+        );
+    }
+
+    /// Test that get_queue_end works
+    pub fn test_queue_basino_queue_get_queue_end_works(
+        writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
+    ) {
+        let queue_start = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
+        let queue_end = (queue_start as usize + unsafe { BASINO_QUEUE_DATA.len() } - 1) as *mut u8;
+        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
+        let mut queue = Queue::new(writer, basino_queue_data).unwrap();
+
+        let res = queue.get_end();
+
+        write_test_result(
+            writer,
+            res.unwrap() == queue_end,
+            "get_end should return correct value",
+        );
     }
 }

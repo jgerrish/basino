@@ -91,6 +91,7 @@
 ;; Returns: A result code: 0 indicates success, 1 indicates failure
 ;;
 basino_queue_init:
+	push r16
 	push r22
 	push r23
 	push r25
@@ -99,6 +100,16 @@ basino_queue_init:
 	push r28
 	push r29
 
+basino_queue_init_null_pointer_check:
+	;; Check that the first parameter is not a null pointer
+	ldi r16, 0
+	cp r24, r16
+	brne basino_queue_init_do_init
+	cp r25, r16
+	brne basino_queue_init_do_init
+	rjmp basino_queue_init_null_pointer
+
+basino_queue_init_do_init:
 	movw Y, r24		; Copy r25:r24 -> Y
 
 	;; Set the pointers in the queue structure to actual locations
@@ -121,10 +132,17 @@ basino_queue_init:
 
 	rjmp basino_queue_init_successful
 
+basino_queue_init_null_pointer:
+	;; Set the return result to NULL pointer error
+	ldi r24, 0x01
+	rjmp basino_queue_init_end
+
 basino_queue_init_successful:
 	;; Set the return result to successful
 	ldi r24, 0x00
+	rjmp basino_queue_init_end
 
+basino_queue_init_end:
 	pop r29
 	pop r28
 	pop r27
@@ -132,6 +150,7 @@ basino_queue_init_successful:
 	pop r25
 	pop r23
 	pop r22
+	pop r16
 
 	ret
 
@@ -163,7 +182,16 @@ basino_queue_put:
 	push r28
 	push r29
 
+basino_queue_put_null_pointer_check:
+	;; Test for a null pointer as the first parameter
+	ldi r16, 0
+	cp r24, r16
+	brne basino_queue_put_not_null_pointer
+	cp r25, r16
+	brne basino_queue_put_not_null_pointer
+	rjmp basino_queue_put_null_pointer
 
+basino_queue_put_not_null_pointer:
 	;; The first parameter is a pointer to the queue structure.
 	;; This structure contains the start, end, head, last_head and tail
 	;; These are all pointers to locations in the queue data buffer.
@@ -243,7 +271,7 @@ basino_queue_put_do_put:
 	rjmp basino_queue_put_success
 
 basino_queue_put_store_tail:
-	;; Store the new stack top
+	;; Store the the new queue tail
 	std Y+BASINO_QUEUE_QUEUE_TAIL_OFFSET, r26
 	std Y+BASINO_QUEUE_QUEUE_TAIL_OFFSET+1, r27
 
@@ -251,6 +279,10 @@ basino_queue_put_store_tail:
 
 basino_queue_put_full:
 	ldi r24, 0x02
+	rjmp basino_queue_put_end
+
+basino_queue_put_null_pointer:
+	ldi r24, 0x01
 	rjmp basino_queue_put_end
 
 basino_queue_put_success:
@@ -302,6 +334,15 @@ basino_queue_get:
 	push r29
 	push r30
 
+basino_queue_get_null_pointer_check:
+	ldi r16, 0
+	cp r24, r16
+	brne basino_queue_get_not_null_pointer
+	cp r25, r16
+	brne basino_queue_get_not_null_pointer
+	rjmp basino_queue_get_null_pointer
+
+basino_queue_get_not_null_pointer:
 	movw Y, r24		; Copy r25:r24 -> Y
 
 	;; Check for case when head == tail
@@ -396,6 +437,10 @@ basino_queue_get_store_head:
 
 	rjmp basino_queue_get_success
 
+basino_queue_get_null_pointer:
+	ldi r30, 0x01
+	rjmp basino_queue_get_end
+
 basino_queue_get_success:
 	ldi r30, 0x00
 	rjmp basino_queue_get_end
@@ -425,78 +470,258 @@ basino_queue_get_end:
 
 ;; Get the last head pointer
 ;; The last head pointer is used to simplify put operations
+;;
+;; Parameters:
+;;   parameter 1: The pointer to the queue structure
+;;   parameter 2: A pointer to an 8-bit return result
+;;                On success the value is zero,
+;;                on failure the value is non-zero.
+;;
+;; Returns: A pointer to the last head of the queue.
 basino_queue_get_last_head:
+	push r16
 	push r28
 	push r29
+	push r30
 
+basino_queue_get_last_head_null_pointer_check:
+	ldi r16, 0
+	cp r24, r16
+	brne basino_queue_get_last_head_not_null_pointer
+	cp r25, r16
+	brne basino_queue_get_last_head_not_null_pointer
+	rjmp basino_queue_get_last_head_null_pointer
+
+basino_queue_get_last_head_not_null_pointer:
 	movw Y, r24		; Copy r25:r24 -> Y
 
 	ldd r24, Y+BASINO_QUEUE_QUEUE_LAST_HEAD_OFFSET
 	ldd r25, Y+BASINO_QUEUE_QUEUE_LAST_HEAD_OFFSET+1
 
+	rjmp basino_queue_get_last_head_success
+
+basino_queue_get_last_head_success:
+	ldi r30, 0x00
+
+	rjmp basino_queue_get_last_head_end
+
+basino_queue_get_last_head_null_pointer:
+	ldi r30, 0x01
+	rjmp basino_queue_get_last_head_end
+
+basino_queue_get_last_head_end:
+	movw X, r22		; Copy r23:r22 (second parameter) to X
+	st X, r30
+
+	pop r30
 	pop r29
 	pop r28
+	pop r16
 
 	ret
 
 ;; Get the current head pointer
 ;; The head is updated on a get
+;;
+;; Parameters:
+;;   parameter 1: The pointer to the queue structure
+;;   parameter 2: A pointer to an 8-bit return result
+;;                On success the value is zero,
+;;                on failure the value is non-zero.
+;;
+;; Returns: A pointer to the head of the queue.
 basino_queue_get_head:
+	push r16
 	push r28
 	push r29
+	push r30
 
+basino_queue_get_head_null_pointer_check:
+	ldi r16, 0
+	cp r24, r16
+	brne basino_queue_get_head_not_null_pointer
+	cp r25, r16
+	brne basino_queue_get_head_not_null_pointer
+	rjmp basino_queue_get_head_null_pointer
+
+basino_queue_get_head_not_null_pointer:
 	movw Y, r24		; Copy r25:r24 -> Y
 
 	ldd r24, Y+BASINO_QUEUE_QUEUE_HEAD_OFFSET
 	ldd r25, Y+BASINO_QUEUE_QUEUE_HEAD_OFFSET+1
 
+	rjmp basino_queue_get_head_success
+
+basino_queue_get_head_success:
+	ldi r30, 0x00
+
+	rjmp basino_queue_get_head_end
+
+basino_queue_get_head_null_pointer:
+	ldi r30, 0x01
+	rjmp basino_queue_get_head_end
+
+basino_queue_get_head_end:
+	movw X, r22		; Copy r23:r22 (second parameter) to X
+	st X, r30
+
+	pop r30
 	pop r29
 	pop r28
+	pop r16
 
 	ret
 
-;; Get the current head pointer
-;; The head is updated on a put
+;; Get the current tail pointer
+;; The tail is updated on a put
+;;
+;; Parameters:
+;;   parameter 1: The pointer to the queue structure
+;;   parameter 2: A pointer to an 8-bit return result
+;;                On success the value is zero,
+;;                on failure the value is non-zero.
+;;
+;; Returns: A pointer to the tail of the queue.
 basino_queue_get_tail:
+	push r16
 	push r28
 	push r29
+	push r30
 
+basino_queue_get_tail_null_pointer_check:
+	ldi r16, 0
+	cp r24, r16
+	brne basino_queue_get_tail_not_null_pointer
+	cp r25, r16
+	brne basino_queue_get_tail_not_null_pointer
+	rjmp basino_queue_get_tail_null_pointer
+
+basino_queue_get_tail_not_null_pointer:
 	movw Y, r24		; Copy r25:r24 -> Y
 
 	ldd r24, Y+BASINO_QUEUE_QUEUE_TAIL_OFFSET
 	ldd r25, Y+BASINO_QUEUE_QUEUE_TAIL_OFFSET+1
 
+	rjmp basino_queue_get_tail_success
+
+basino_queue_get_tail_success:
+	ldi r30, 0x00
+
+	rjmp basino_queue_get_tail_end
+
+basino_queue_get_tail_null_pointer:
+	ldi r30, 0x01
+	rjmp basino_queue_get_tail_end
+
+basino_queue_get_tail_end:
+	movw X, r22		; Copy r23:r22 (second parameter) to X
+	st X, r30
+
+	pop r30
 	pop r29
 	pop r28
+	pop r16
 
 	ret
 
 ;; Get a pointer to the start of the queue
+;;
+;; Parameters:
+;;   parameter 1: The pointer to the queue structure
+;;   parameter 2: A pointer to an 8-bit return result
+;;                On success the value is zero,
+;;                on failure the value is non-zero.
+;;
+;; Returns: A pointer to the start of the queue.
 basino_queue_get_queue_start:
+	push r16
 	push r28
 	push r29
+	push r30
 
+basino_queue_get_queue_start_null_pointer_check:
+	ldi r16, 0
+	cp r24, r16
+	brne basino_queue_get_queue_start_not_null_pointer
+	cp r25, r16
+	brne basino_queue_get_queue_start_not_null_pointer
+	rjmp basino_queue_get_queue_start_null_pointer
+
+basino_queue_get_queue_start_not_null_pointer:
 	movw Y, r24		; Copy r25:r24 -> Y
 
 	ldd r24, Y+BASINO_QUEUE_QUEUE_START_OFFSET
 	ldd r25, Y+BASINO_QUEUE_QUEUE_START_OFFSET+1
 
+	rjmp basino_queue_get_queue_start_success
+
+basino_queue_get_queue_start_success:
+	ldi r30, 0x00
+
+	rjmp basino_queue_get_queue_start_end
+
+basino_queue_get_queue_start_null_pointer:
+	ldi r30, 0x01
+	rjmp basino_queue_get_queue_start_end
+
+basino_queue_get_queue_start_end:
+	movw X, r22		; Copy r23:r22 (second parameter) to X
+	st X, r30
+
+	pop r30
 	pop r29
 	pop r28
+	pop r16
 
 	ret
 
 ;; Get a pointer to the end of the queue
+;;
+;; Parameters:
+;;   parameter 1: The pointer to the queue structure
+;;   parameter 2: A pointer to an 8-bit return result
+;;                On success the value is zero,
+;;                on failure the value is non-zero.
+;;
+;; Returns: A pointer to the end of the queue.
 basino_queue_get_queue_end:
+	push r16
 	push r28
 	push r29
+	push r30
 
+basino_queue_get_queue_end_null_pointer_check:
+	ldi r16, 0
+	cp r24, r16
+	brne basino_queue_get_queue_end_not_null_pointer
+	cp r25, r16
+	brne basino_queue_get_queue_end_not_null_pointer
+	rjmp basino_queue_get_queue_end_null_pointer
+
+basino_queue_get_queue_end_not_null_pointer:
 	movw Y, r24		; Copy r25:r24 -> Y
 
 	ldd r24, Y+BASINO_QUEUE_QUEUE_END_OFFSET
 	ldd r25, Y+BASINO_QUEUE_QUEUE_END_OFFSET+1
 
+	rjmp basino_queue_get_queue_end_success
+
+basino_queue_get_queue_end_success:
+	ldi r30, 0x00
+
+	rjmp basino_queue_get_queue_end_end
+
+basino_queue_get_queue_end_null_pointer:
+	ldi r30, 0x01
+	rjmp basino_queue_get_queue_end_end
+
+basino_queue_get_queue_end_end:
+	movw X, r22		; Copy r23:r22 (second parameter) to X
+	st X, r30
+
+	pop r30
 	pop r29
 	pop r28
+	pop r16
 
 	ret
