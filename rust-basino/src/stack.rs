@@ -28,7 +28,7 @@ use crate::{
 pub trait StackImpl {
     /// Create a new Stack
     #[allow(clippy::new_ret_no_self)]
-    fn new(writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) -> Result<Stack, Error>;
+    fn new() -> Result<Stack, Error>;
 
     /// Pop a value from the stack
     fn pop(&mut self) -> Result<u8, Error>;
@@ -44,7 +44,7 @@ pub trait StackImpl {
 }
 
 impl StackImpl for Stack {
-    fn new(_writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) -> Result<Self, Error> {
+    fn new() -> Result<Self, Error> {
         let stack_bottom_ptr = unsafe { core::ptr::addr_of_mut!(BASINO_STACK_BUFFER) as *mut u8 };
         let len = unsafe { BASINO_STACK_BUFFER.len() - 1 };
 
@@ -190,7 +190,7 @@ pub mod tests {
 
     /// Test that initializing the stack works
     pub fn test_stack_new_works(writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) {
-        let mut stack = Stack::new(writer).unwrap();
+        let mut stack = Stack::new().unwrap();
 
         let expected_size = unsafe { BASINO_STACK_BUFFER.len() - 1 };
         let size = stack.size();
@@ -236,7 +236,7 @@ pub mod tests {
 
     /// Test that pushing a value on the stack works
     pub fn test_stack_push_works(writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) {
-        let mut stack = Stack::new(writer).unwrap();
+        let mut stack = Stack::new().unwrap();
 
         let res = stack.push(5);
         write_test_result(writer, res.is_ok(), "should be able to push value");
@@ -254,7 +254,7 @@ pub mod tests {
     pub fn test_stack_empty_pop_fails(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let mut stack = Stack::new(writer).unwrap();
+        let mut stack = Stack::new().unwrap();
 
         let res = stack.pop();
 
@@ -269,7 +269,7 @@ pub mod tests {
     pub fn test_stack_push_full_stack_fails(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let mut stack = Stack::new(writer).unwrap();
+        let mut stack = Stack::new().unwrap();
 
         for i in 0..stack.size() {
             let n = (i % 255) as u8;
@@ -302,7 +302,7 @@ pub mod tests {
     pub fn test_stack_push_full_stack_pop_full_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let mut stack = Stack::new(writer).unwrap();
+        let mut stack = Stack::new().unwrap();
 
         for i in 0..stack.size() {
             let n = (i % 256) as u8;
