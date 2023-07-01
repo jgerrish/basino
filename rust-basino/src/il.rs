@@ -198,8 +198,8 @@ pub struct Interpreter<'a> {
     /// The stack
     pub stack: *mut Stack<'a>,
     /// We want this structure to last as long as the lifetime of the
-    /// array it's based on.
-    _marker: PhantomData<&'a [u8]>,
+    /// array its based on.
+    _marker: PhantomData<&'a u8>,
 }
 
 impl<'a> Debug for Interpreter<'a> {
@@ -254,21 +254,23 @@ impl<'a> Interpreter<'a> {
     /// // Create a new Interpreter
     /// let byte_code_data: [u8; 2] = [0; 2];
     /// let mut input_queue_data: [u8; 16] = [0; 16];
+    /// let mut stack_data: [u8; 16] = [0; 16];
     ///
-    /// let mut queue = Queue::new(&mut input_queue_data).unwrap();
+    /// let mut queue = Queue::new(input_queue_data.as_mut_ptr(), input_queue_data.len()).unwrap();
     ///
-    /// let mut stack = Stack::new().unwrap();
+    /// let mut stack = Stack::new(stack_data.as_mut_ptr(), stack_data.len()).unwrap();
     ///
-    /// let res = Interpreter::new(&byte_code_data, &mut queue, &mut stack);
+    /// let _res = Interpreter::new(byte_code_data.as_ptr(), byte_code_data.len(), &mut queue, &mut stack);
     ///
     /// ```
     pub fn new(
-        byte_code: &'a [u8],
+        byte_code: *const u8,
+        byte_code_len: usize,
         queue: &'a mut Queue<'a>,
         stack: &'a mut Stack<'a>,
     ) -> Result<Self, Error> {
         let mut interpreter = Interpreter {
-            byte_code: byte_code.as_ptr() as *const u8,
+            byte_code,
             byte_code_end: core::ptr::null_mut::<u8>(),
             byte_code_ptr: core::ptr::null_mut::<u8>(),
             state: InterpreterState::Stopped,
@@ -280,8 +282,8 @@ impl<'a> Interpreter<'a> {
         let res = unsafe {
             basino_il_init(
                 core::ptr::addr_of_mut!(interpreter),
-                byte_code.as_ptr() as *const u8,
-                byte_code.len() as u16,
+                byte_code as *const u8,
+                byte_code_len as u16,
                 core::ptr::addr_of_mut!(queue.queue),
                 core::ptr::addr_of_mut!(*stack),
             )
@@ -313,12 +315,13 @@ impl<'a> Interpreter<'a> {
     /// // Create a new Interpreter
     /// let byte_code_data: [u8; 2] = [0x08; 2];
     /// let mut input_queue_data: [u8; 16] = [0; 16];
+    /// let mut stack_data: [u8; 16] = [0; 16];
     ///
-    /// let mut queue = Queue::new(&mut input_queue_data).unwrap();
+    /// let mut queue = Queue::new(input_queue_data.as_mut_ptr(), input_queue_data.len()).unwrap();
     ///
-    /// let mut stack = Stack::new().unwrap();
+    /// let mut stack = Stack::new(stack_data.as_mut_ptr(), stack_data.len()).unwrap();
     ///
-    /// let mut interpreter = Interpreter::new(&byte_code_data, &mut queue, &mut stack).unwrap();
+    /// let mut interpreter = Interpreter::new(byte_code_data.as_ptr(), byte_code_data.len(), &mut queue, &mut stack).unwrap();
     /// let res = interpreter.get_next_bytecode();
     /// assert!(res.is_ok());
     /// assert_eq!(res.expect("Should get an Ok Result"), 0x08);
@@ -360,17 +363,18 @@ impl<'a> Interpreter<'a> {
     /// // Create a new Interpreter
     /// let mut byte_code_data: [u8; 5] = [0; 5];
     /// let mut input_queue_data: [u8; 16] = [0; 16];
+    /// let mut stack_data: [u8; 16] = [0; 16];
     ///
     /// byte_code_data[0] = 0x08;
     /// byte_code_data[1] = 0x09;
     /// byte_code_data[2] = 0x76;
     /// byte_code_data[3] = 0x00;
     ///
-    /// let mut queue = Queue::new(&mut input_queue_data).unwrap();
+    /// let mut queue = Queue::new(input_queue_data.as_mut_ptr(), input_queue_data.len()).unwrap();
     ///
-    /// let mut stack = Stack::new().unwrap();
+    /// let mut stack = Stack::new(stack_data.as_mut_ptr(), stack_data.len()).unwrap();
     ///
-    /// let mut interpreter = Interpreter::new(&byte_code_data, &mut queue, &mut stack).unwrap();
+    /// let mut interpreter = Interpreter::new(byte_code_data.as_ptr(), byte_code_data.len(), &mut queue, &mut stack).unwrap();
     /// let res = interpreter.run();
     /// assert!(res.is_ok());
     /// // let item_res = stack.pop();
@@ -411,16 +415,17 @@ impl<'a> Interpreter<'a> {
     /// // Create a new Interpreter
     /// let mut byte_code_data: [u8; 4] = [0; 4];
     /// let mut input_queue_data: [u8; 16] = [0; 16];
+    /// let mut stack_data: [u8; 16] = [0; 16];
     ///
     /// byte_code_data[0] = 0x09;
     /// byte_code_data[1] = 0x76;
     /// byte_code_data[2] = 0x00;
     ///
-    /// let mut queue = Queue::new(&mut input_queue_data).unwrap();
+    /// let mut queue = Queue::new(input_queue_data.as_mut_ptr(), input_queue_data.len()).unwrap();
     ///
-    /// let mut stack = Stack::new().unwrap();
+    /// let mut stack = Stack::new(stack_data.as_mut_ptr(), stack_data.len()).unwrap();
     ///
-    /// let mut interpreter = Interpreter::new(&byte_code_data, &mut queue, &mut stack).unwrap();
+    /// let mut interpreter = Interpreter::new(byte_code_data.as_ptr(), byte_code_data.len(), &mut queue, &mut stack).unwrap();
     /// let byte_code = interpreter.get_next_bytecode().unwrap();
     /// let res = interpreter.exec(byte_code);
     /// assert!(res.is_ok());
@@ -485,7 +490,12 @@ pub mod tests {
         })
         .unwrap();
 
-        let res = Interpreter::new(&byte_code_data, &mut queue, &mut stack);
+        let res = Interpreter::new(
+            byte_code_data.as_ptr(),
+            byte_code_data.len(),
+            &mut queue,
+            &mut stack,
+        );
 
         write_test_result(writer, res.is_ok(), "should initialize interpreter");
     }
@@ -505,7 +515,12 @@ pub mod tests {
         })
         .unwrap();
 
-        let res = Interpreter::new(&byte_code_data, &mut queue, &mut stack);
+        let res = Interpreter::new(
+            byte_code_data.as_ptr(),
+            byte_code_data.len(),
+            &mut queue,
+            &mut stack,
+        );
 
         write_test_result(
             writer,
@@ -545,7 +560,13 @@ pub mod tests {
         })
         .unwrap();
 
-        let mut interpreter = Interpreter::new(&byte_code_data, &mut queue, &mut stack).unwrap();
+        let mut interpreter = Interpreter::new(
+            byte_code_data.as_ptr(),
+            byte_code_data.len(),
+            &mut queue,
+            &mut stack,
+        )
+        .unwrap();
 
         let byte_code_ptr_old = interpreter.byte_code_ptr as usize;
         let res = interpreter.exec(0x08);
@@ -577,7 +598,13 @@ pub mod tests {
         })
         .unwrap();
 
-        let mut interpreter = Interpreter::new(&byte_code_data, &mut queue, &mut stack).unwrap();
+        let mut interpreter = Interpreter::new(
+            byte_code_data.as_ptr(),
+            byte_code_data.len(),
+            &mut queue,
+            &mut stack,
+        )
+        .unwrap();
 
         let byte_code = interpreter.get_next_bytecode().unwrap();
         let byte_code_ptr_old = interpreter.byte_code_ptr as usize;
@@ -621,7 +648,13 @@ pub mod tests {
         })
         .unwrap();
 
-        let mut interpreter = Interpreter::new(byte_code_data, &mut queue, &mut stack).unwrap();
+        let mut interpreter = Interpreter::new(
+            byte_code_data.as_ptr(),
+            byte_code_data.len(),
+            &mut queue,
+            &mut stack,
+        )
+        .unwrap();
 
         interpreter.state = InterpreterState::Stopped;
 
@@ -662,7 +695,13 @@ pub mod tests {
         })
         .unwrap();
 
-        let mut interpreter = Interpreter::new(byte_code_data, &mut queue, &mut stack).unwrap();
+        let mut interpreter = Interpreter::new(
+            byte_code_data.as_ptr(),
+            byte_code_data.len(),
+            &mut queue,
+            &mut stack,
+        )
+        .unwrap();
 
         let res = interpreter.get_next_bytecode();
 
@@ -707,7 +746,13 @@ pub mod tests {
         })
         .unwrap();
 
-        let mut interpreter = Interpreter::new(&byte_code_data, &mut queue, &mut stack).unwrap();
+        let mut interpreter = Interpreter::new(
+            byte_code_data.as_ptr(),
+            byte_code_data.len(),
+            &mut queue,
+            &mut stack,
+        )
+        .unwrap();
 
         write_test_result(
             writer,
@@ -783,7 +828,13 @@ pub mod tests {
         })
         .unwrap();
 
-        let mut interpreter = Interpreter::new(&byte_code_data, &mut queue, &mut stack).unwrap();
+        let mut interpreter = Interpreter::new(
+            byte_code_data.as_ptr(),
+            byte_code_data.len(),
+            &mut queue,
+            &mut stack,
+        )
+        .unwrap();
 
         write_test_result(
             writer,
@@ -875,7 +926,13 @@ pub mod tests {
         })
         .unwrap();
 
-        let mut interpreter = Interpreter::new(&byte_code_data, &mut queue, &mut stack).unwrap();
+        let mut interpreter = Interpreter::new(
+            byte_code_data.as_ptr(),
+            byte_code_data.len(),
+            &mut queue,
+            &mut stack,
+        )
+        .unwrap();
 
         let res = interpreter.run();
 
@@ -919,7 +976,13 @@ pub mod tests {
         })
         .unwrap();
 
-        let mut interpreter = Interpreter::new(&byte_code_data, &mut queue, &mut stack).unwrap();
+        let mut interpreter = Interpreter::new(
+            byte_code_data.as_ptr(),
+            byte_code_data.len(),
+            &mut queue,
+            &mut stack,
+        )
+        .unwrap();
 
         interpreter.run().unwrap();
         let res = interpreter.run();
@@ -960,7 +1023,13 @@ pub mod tests {
         })
         .unwrap();
 
-        let mut interpreter = Interpreter::new(&byte_code_data, &mut queue, &mut stack).unwrap();
+        let mut interpreter = Interpreter::new(
+            byte_code_data.as_ptr(),
+            byte_code_data.len(),
+            &mut queue,
+            &mut stack,
+        )
+        .unwrap();
 
         let res = interpreter.run();
 
