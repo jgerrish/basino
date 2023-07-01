@@ -45,7 +45,7 @@ pub struct Stack<'a> {
     pub top: *mut u8,
 
     /// We want this structure to last as long as the lifetime of the array
-    /// it's based on.
+    /// its based on.
     _marker: PhantomData<&'a u8>,
 }
 
