@@ -5,6 +5,8 @@
 #![feature(abi_avr_interrupt)]
 #![feature(ptr_from_ref)]
 
+use core::marker::PhantomData;
+
 /// Error data types
 pub mod error;
 
@@ -29,7 +31,7 @@ pub mod stack;
 /// The stack_top_sentinel is located at top of the stack, it contains
 /// the address of the top and provides padding for the stack.
 #[repr(C)]
-pub struct Stack {
+pub struct Stack<'a> {
     /// The actual stack array which holds the data
     pub data: *mut u8,
 
@@ -41,6 +43,10 @@ pub struct Stack {
 
     /// The stack top
     pub top: *mut u8,
+
+    /// We want this structure to last as long as the lifetime of the array
+    /// it's based on.
+    _marker: PhantomData<&'a u8>,
 }
 
 /// The Queue data structure
