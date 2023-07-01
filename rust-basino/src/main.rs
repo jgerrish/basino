@@ -16,8 +16,8 @@ fn main() -> ! {
     let mut serial = arduino_hal::default_serial!(dp, pins, 57600);
 
     // interrupt::free(|cs| {
-    // 	let mut basino_queue_data = unsafe { BASINO_QUEUE_DATA.borrow(cs) };
-    // 	basino_queue_data = &Some([0; 4]);
+    // 	let mut basino_input_queue_data = unsafe { BASINO_INPUT_QUEUE_DATA.borrow(cs) };
+    // 	basino_queue_data = &Some(basino_input_queue_data);
     // });
     // ufmt::uwriteln!(serial, "Got here").unwrap();
 
@@ -37,6 +37,8 @@ fn main() -> ! {
     rust_basino::queue::tests::run_tests(&mut serial);
     #[cfg(feature = "test-stack")]
     rust_basino::stack::tests::run_tests(&mut serial);
+    #[cfg(feature = "test-il")]
+    rust_basino::il::tests::run_tests(&mut serial);
 
     loop {
         avr_device::asm::sleep();

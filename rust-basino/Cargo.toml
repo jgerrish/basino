@@ -51,8 +51,10 @@ test-base = []
 test-queue = []
 # Test the stack implementation
 test-stack = []
+# Test the Interpretive Language interpreter implementation
+test-il = []
 
 # default = ["test-base", "test-stack"]
-default = ["test-base", "test-queue"]
+default = ["test-il"]
 # default = ["test-base"]
 features = []

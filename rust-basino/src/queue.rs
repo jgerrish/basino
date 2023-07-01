@@ -104,7 +104,8 @@ pub trait QueueImpl {
 }
 
 impl Queue {
-    fn new(queue_array: &mut [u8]) -> Result<Self, Error> {
+    /// Create a new queue
+    pub fn new(queue_array: &mut [u8]) -> Result<Self, Error> {
         // Initialize the queue
         // Set the queue start to the beginning of the queue array
         let queue_start = queue_array.as_mut_ptr();

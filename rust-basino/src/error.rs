@@ -3,9 +3,12 @@
 #![warn(unsafe_code)]
 
 use core::fmt::{Debug, Display, Formatter, Result};
-use ufmt::{uDebug, uWrite};
+use ufmt::{uDebug, uWrite, uwrite};
 
-/// The kinds of errors that can occur working with stacks
+/// The kinds of errors that can occur working with stacks.
+/// These enums are not C-style enums and are not meant to be
+/// converted to integer values.  Their numeric value is not
+/// guaranteed to match their value in the assembly implementation.
 #[derive(Eq, PartialEq)]
 pub enum ErrorKind {
     /// A stack overflow would occur if an item is pushed
@@ -21,6 +24,13 @@ pub enum ErrorKind {
     InvalidArguments,
     /// An unknown error type
     Unknown,
+}
+
+impl Debug for ErrorKind {
+    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
+        // Use the Display implementation
+        write!(f, "{self}")
+    }
 }
 
 impl uDebug for ErrorKind {
@@ -65,7 +75,16 @@ impl Error {
 
 impl Debug for Error {
     fn fmt(&self, f: &mut Formatter) -> Result {
-        write!(f, "{}", self.kind)
+        write!(f, "{:?}", self.kind)
+    }
+}
+
+impl uDebug for Error {
+    fn fmt<T>(&self, f: &mut ufmt::Formatter<'_, T>) -> core::result::Result<(), T::Error>
+    where
+        T: uWrite + ?Sized,
+    {
+        uwrite!(f, "{:?}", self.kind)
     }
 }
 

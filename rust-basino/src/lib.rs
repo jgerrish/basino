@@ -5,6 +5,8 @@
 #![feature(abi_avr_interrupt)]
 #![feature(ptr_from_ref)]
 
+use core::fmt::{Debug, Formatter};
+
 use ufmt::{uDebug, uWrite};
 
 /// Error data types
@@ -15,6 +17,14 @@ pub mod queue;
 
 /// Stack functions and data structures
 pub mod stack;
+
+/// Interpretive Language functions and data structures
+pub mod il;
+
+use crate::il::Interpreter;
+
+/// Create a type alias to simplify function parameters
+pub type Usart = arduino_hal::hal::usart::Usart0<arduino_hal::DefaultClock>;
 
 // We can only have one link section for the same library file
 // Otherwise it tries to include the library twice, so C externs are
@@ -45,6 +55,34 @@ pub struct Stack {
     pub top: *mut u8,
 }
 
+impl Debug for Stack {
+    fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
+        write!(f, "  stack data 0x{}", &(self.data as usize))?;
+        write!(f, ", top sentinel: 0x{}", &(self.top_sentinel as usize))?;
+        write!(f, ", bottom: 0x{}", &(self.bottom as usize))?;
+        write!(f, ", top: 0x{}", &(self.top as usize))?;
+        write!(f, ", head item: 0x{}", &(unsafe { *(self.top) }))
+    }
+}
+
+impl uDebug for Stack {
+    fn fmt<T>(&self, f: &mut ufmt::Formatter<'_, T>) -> core::result::Result<(), T::Error>
+    where
+        T: uWrite + ?Sized,
+    {
+        f.write_str("  stack data 0x")?;
+        ufmt::uDisplay::fmt(&(self.data as usize), f)?;
+        f.write_str(", top sentinel: 0x")?;
+        ufmt::uDisplay::fmt(&(self.top_sentinel as usize), f)?;
+        f.write_str(", bottom: 0x")?;
+        ufmt::uDisplay::fmt(&(self.bottom as usize), f)?;
+        f.write_str(", top: 0x")?;
+        ufmt::uDisplay::fmt(&(self.top as usize), f)?;
+        f.write_str(", head item: 0x")?;
+        ufmt::uDisplay::fmt(&(unsafe { *(self.top) }), f)
+    }
+}
+
 /// The Queue data structure
 #[repr(C)]
 pub struct QueueObj {
@@ -66,9 +104,30 @@ pub struct QueueObj {
     pub tail: *mut u8,
 }
 
+impl uDebug for QueueObj {
+    fn fmt<T>(&self, f: &mut ufmt::Formatter<'_, T>) -> core::result::Result<(), T::Error>
+    where
+        T: uWrite + ?Sized,
+    {
+        f.write_str("  queue head 0x")?;
+        ufmt::uDisplay::fmt(&(self.head as usize), f)?;
+        f.write_str(", last head: 0x")?;
+        ufmt::uDisplay::fmt(&(self.last_head as usize), f)?;
+        f.write_str(", head item: 0x")?;
+        ufmt::uDisplay::fmt(&(unsafe { *(self.head) }), f)?;
+        f.write_str(", tail: 0x")?;
+        ufmt::uDisplay::fmt(&(self.tail as usize), f)?;
+        f.write_str(", start: 0x")?;
+        ufmt::uDisplay::fmt(&(self.start as usize), f)?;
+        f.write_str(", end: 0x")?;
+        ufmt::uDisplay::fmt(&(self.end as usize), f)
+    }
+}
+
 /// Queue data structure with length field.
 /// This can be simplified after the initial structure refactor is
 /// done.
+#[repr(C)]
 pub struct Queue {
     /// The actual queue object
     pub queue: QueueObj,
@@ -118,7 +177,7 @@ pub static mut BASINO_STACK_FILLER: u8 = 1;
 /// in the same location as DEVICE_PERIPHERALS from the avr-device
 /// crate.
 ///
-/// Add the #[used] attribute to keep this static even if it's not
+/// Add the #\[used\] attribute to keep this static even if it's not
 /// used in the program.
 #[link_section = ".ram2bss"]
 #[used]
@@ -149,10 +208,19 @@ pub static mut BASINO_STACK_BUFFER: [u8; 33] = [0; 33];
 #[link_section = ".ram2bss"]
 pub static mut BASINO_QUEUE_DATA: [u8; 4] = [0; 4];
 
+/// The input queue data
+#[link_section = ".ram2bss"]
+pub static mut BASINO_INPUT_QUEUE_DATA: [u8; 32] = [0; 32];
+
 /// The queue object we pass into the C / assembly code to store data
 /// This should be initialized by the code before being used
 #[link_section = ".ram2bss"]
 pub static mut BASINO_QUEUE: Option<Queue> = None;
+
+/// The array for the byte code program
+/// This array can be shared between test functions
+#[link_section = ".ram2bss"]
+pub static mut BASINO_IL_BYTE_CODE_DATA: [u8; 33] = [0; 33];
 
 #[link(name = "basino")]
 extern "C" {
@@ -217,6 +285,27 @@ extern "C" {
     pub fn basino_queue_get_last_head(queue: *mut QueueObj, result: *mut u8) -> *const u8;
     /// Get the current tail of the queue
     pub fn basino_queue_get_tail(queue: *mut QueueObj, result: *mut u8) -> *const u8;
+
+    // Interpretive Language functions
+
+    /// Initialize the interpreter
+    /// byte_code_len is the length of the array.  This is used to initialize the
+    /// end pointer.
+    pub fn basino_il_init(
+        interpreter: *mut Interpreter,
+        byte_code: *const u8,
+        byte_code_len: u16,
+        queue: *mut QueueObj,
+        stack: *mut Stack,
+    ) -> u8;
+
+    /// Get the next bytecode
+    pub fn basino_il_get_next_bytecode(interpreter: *mut Interpreter, result: *mut u8) -> u8;
+    /// Execute a single command
+    pub fn basino_il_run(interpreter: *mut Interpreter) -> u8;
+
+    /// Execute a single command
+    pub fn basino_il_exec(interpreter: *mut Interpreter, opcode: u8) -> u8;
 }
 
 /// Test module for the top-level Tiny BASIC system

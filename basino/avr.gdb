@@ -1,3 +1,6 @@
+# emacs invocation: avr-gdb -i=mi -x /home/josh/src/asm/basino/basino/avr.gdb -d /home/josh/src/asm/basino/basino -d /home/josh/src/asm/basino/rust-basino/src /home/josh/src/asm/basino/rust-basino/target/avr-atmega328p/debug/rust-basino.elf
+
+
 target extended-remote :1234
 # target remote :1234
 
