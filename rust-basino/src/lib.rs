@@ -52,7 +52,7 @@ pub struct Stack<'a> {
 
 /// The Queue data structure
 #[repr(C)]
-pub struct QueueObj {
+pub struct QueueObj<'a> {
     /// The actual queue array which holds the data
     pub queue: *mut u8,
     /// The address of the start of the queue
@@ -69,19 +69,23 @@ pub struct QueueObj {
     /// The tail points to the the location where the next item will
     /// be put.
     pub tail: *mut u8,
+
+    /// We want this structure to last as long as the lifetime of the array
+    /// its based on.
+    _marker: PhantomData<&'a u8>,
 }
 
 /// Queue data structure with length field.
 /// This can be simplified after the initial structure refactor is
 /// done.
-pub struct Queue {
+pub struct Queue<'a> {
     /// The actual queue object
-    pub queue: QueueObj,
+    pub queue: QueueObj<'a>,
     /// Length of the queue.
     pub queue_len: usize,
 }
 
-impl uDebug for Queue {
+impl<'a> uDebug for Queue<'a> {
     fn fmt<T>(&self, f: &mut ufmt::Formatter<'_, T>) -> core::result::Result<(), T::Error>
     where
         T: uWrite + ?Sized,

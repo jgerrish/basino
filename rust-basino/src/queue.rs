@@ -7,7 +7,10 @@ use crate::{
     basino_queue_init, basino_queue_put, Queue, QueueObj,
 };
 
-use core::fmt::{Debug, Display, Formatter};
+use core::{
+    fmt::{Debug, Display, Formatter},
+    marker::PhantomData,
+};
 use ufmt::{uDebug, uWrite};
 
 /// The kinds of errors that can occur working with queues
@@ -103,17 +106,17 @@ pub trait QueueImpl {
     fn get_tail(&mut self) -> Result<*const u8, Error>;
 }
 
-impl Queue {
-    fn new(queue_array: &mut [u8]) -> Result<Self, Error> {
+impl<'a> Queue<'a> {
+    fn new(queue_array: *mut u8, len: usize) -> Result<Self, Error> {
         // Initialize the queue
         // Set the queue start to the beginning of the queue array
-        let queue_start = queue_array.as_mut_ptr();
+        let queue_start = queue_array;
 
         // Set the queue end to the start plus the length minus one
         // Why minus one?  Not because of the head/tail limitations,
         // but because start and end are pointers and for an array of length one
         // they should point to the same element.
-        let queue_end = (queue_start as usize + queue_array.len() - 1) as *mut u8;
+        let queue_end = (queue_start as usize + len - 1) as *mut u8;
 
         let mut queue = Self {
             queue: QueueObj {
@@ -123,8 +126,9 @@ impl Queue {
                 head: core::ptr::null_mut::<u8>(),
                 last_head: core::ptr::null_mut::<u8>(),
                 tail: core::ptr::null_mut::<u8>(),
+                _marker: PhantomData,
             },
-            queue_len: queue_array.len(),
+            queue_len: len,
         };
 
         let res = unsafe {
@@ -144,7 +148,7 @@ impl Queue {
     }
 }
 
-impl QueueImpl for Queue {
+impl<'a> QueueImpl for Queue<'a> {
     fn put(&mut self, value: u8) -> Result<(), Error> {
         let result = unsafe {
             basino_queue_put(core::ptr::addr_of_mut!(self.queue) as *mut QueueObj, value)
@@ -307,8 +311,8 @@ pub mod tests {
 
     /// Test that initializing the queue works
     pub fn test_queue_init_works(writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) {
-        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
-        let res = Queue::new(basino_queue_data);
+        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
+        let res = Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() });
 
         write_test_result(writer, res.is_ok(), "should initialize queue");
     }
@@ -317,8 +321,9 @@ pub mod tests {
     pub fn test_queue_empty_get_fails(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
-        let mut queue = Queue::new(basino_queue_data).unwrap();
+        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
+        let mut queue =
+            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
 
         let res = queue.get();
         write_test_result(writer, res.is_err(), "get from empty queue should fail");
@@ -326,8 +331,9 @@ pub mod tests {
 
     /// Test that putting an item into the queue works
     pub fn test_queue_put_works(writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) {
-        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
-        let mut queue = Queue::new(basino_queue_data).unwrap();
+        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
+        let mut queue =
+            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
 
         let res = queue.put(5);
 
@@ -351,8 +357,9 @@ pub mod tests {
     pub fn test_queue_put_twice_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
-        let mut queue = Queue::new(basino_queue_data).unwrap();
+        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
+        let mut queue =
+            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
 
         // First, put both items
 
@@ -391,8 +398,9 @@ pub mod tests {
     pub fn test_queue_put_fill_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
-        let mut queue = Queue::new(basino_queue_data).unwrap();
+        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
+        let mut queue =
+            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
 
         for i in 1..queue.queue_len {
             let res = queue.put((i % 256) as u8);
@@ -419,8 +427,9 @@ pub mod tests {
     pub fn test_queue_put_and_get_fill_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
-        let mut queue = Queue::new(basino_queue_data).unwrap();
+        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
+        let mut queue =
+            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
 
         for i in 1..queue.queue_len {
             let _res = queue.put((i % 256) as u8);
@@ -441,8 +450,9 @@ pub mod tests {
     pub fn test_queue_put_get_put_fill_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
-        let mut queue = Queue::new(basino_queue_data).unwrap();
+        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
+        let mut queue =
+            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
 
         let res = queue.put(0x23_u8);
         write_test_result(writer, res.is_ok(), "single put of 0x23 should work");
@@ -464,8 +474,9 @@ pub mod tests {
     pub fn test_queue_head_wraps_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
-        let mut queue = Queue::new(basino_queue_data).unwrap();
+        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
+        let mut queue =
+            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
 
         // ufmt::uwriteln!(writer, "array: {:?}", unsafe { BASINO_QUEUE_DATA }).unwrap();
         // for i in 1..queue.queue_len goes from 1 to (queue.queue_len - 1) inclusive
@@ -509,8 +520,9 @@ pub mod tests {
     pub fn test_queue_head_wraps_nonfilled_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
-        let mut queue = Queue::new(basino_queue_data).unwrap();
+        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
+        let mut queue =
+            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
 
         // for i in 1..queue.queue_len goes from 1 to (queue.queue_len - 1) inclusive
         // So, if queue.queue_len is 4, this iterates through [1, 2, 3]
@@ -556,8 +568,9 @@ pub mod tests {
     pub fn test_queue_head_wraps_nonemptied_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
-        let mut queue = Queue::new(basino_queue_data).unwrap();
+        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
+        let mut queue =
+            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
 
         // put in two items [1, 2]
         for i in [1, 2] {
@@ -603,8 +616,9 @@ pub mod tests {
     pub fn test_queue_last_head_update(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
-        let mut queue = Queue::new(basino_queue_data).unwrap();
+        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
+        let mut queue =
+            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
 
         // for i in 1..queue.queue_len goes from 1 to (queue.queue_len - 1) inclusive
         // So, if queue.queue_len is 4, this iterates through [1, 2, 3]
@@ -658,9 +672,8 @@ pub mod tests {
     pub fn test_queue_init_null_queue_fails(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let queue_start_ptr = unsafe { core::ptr::addr_of_mut!(BASINO_QUEUE_DATA) as *mut u8 };
+        let queue_start_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
         let len = unsafe { BASINO_QUEUE_DATA.len() };
-
         let queue_end_ptr: *mut u8 = (queue_start_ptr as usize + len - 1) as *mut u8;
 
         let res = unsafe {
@@ -812,8 +825,9 @@ pub mod tests {
     ) {
         let queue_start = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
         let queue_end = (queue_start as usize + unsafe { BASINO_QUEUE_DATA.len() } - 1) as *mut u8;
-        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
-        let mut queue = Queue::new(basino_queue_data).unwrap();
+        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
+        let mut queue =
+            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
 
         let last_head = queue.get_last_head();
 
@@ -829,8 +843,9 @@ pub mod tests {
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
         let queue_start = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
-        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
-        let mut queue = Queue::new(basino_queue_data).unwrap();
+        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
+        let mut queue =
+            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
 
         let head = queue.get_head();
 
@@ -846,8 +861,9 @@ pub mod tests {
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
         let queue_start = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
-        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
-        let mut queue = Queue::new(basino_queue_data).unwrap();
+        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
+        let mut queue =
+            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
 
         let tail = queue.get_tail();
 
@@ -863,8 +879,9 @@ pub mod tests {
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
         let queue_start = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
-        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
-        let mut queue = Queue::new(basino_queue_data).unwrap();
+        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
+        let mut queue =
+            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
 
         let res = queue.get_start();
 
@@ -881,8 +898,9 @@ pub mod tests {
     ) {
         let queue_start = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
         let queue_end = (queue_start as usize + unsafe { BASINO_QUEUE_DATA.len() } - 1) as *mut u8;
-        let basino_queue_data = unsafe { BASINO_QUEUE_DATA.as_mut() };
-        let mut queue = Queue::new(basino_queue_data).unwrap();
+        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
+        let mut queue =
+            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
 
         let res = queue.get_end();
 
