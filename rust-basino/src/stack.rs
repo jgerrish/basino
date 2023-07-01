@@ -7,6 +7,8 @@
 //! assembly code.
 #![warn(missing_docs)]
 
+use core::marker::PhantomData;
+
 use arduino_hal::{
     hal::port::{PD0, PD1},
     pac::USART0,
@@ -21,14 +23,15 @@ use crate::{
     basino_get_basino_stack_bottom, basino_get_basino_stack_top,
     basino_get_basino_stack_top_sentinel, basino_stack_init, basino_stack_pop, basino_stack_push,
     error::{Error, ErrorKind},
-    Stack, BASINO_STACK_BUFFER,
+    Stack,
 };
 
 /// Basic functions for a stack
-pub trait StackImpl {
+pub trait StackImpl<'a> {
     /// Create a new Stack
     #[allow(clippy::new_ret_no_self)]
-    fn new() -> Result<Stack, Error>;
+    // fn new(array: &'a mut [u8]) -> Result<Stack<'a>, Error>;
+    fn new(array: *mut u8, len: usize) -> Result<Stack<'a>, Error>;
 
     /// Pop a value from the stack
     fn pop(&mut self) -> Result<u8, Error>;
@@ -43,10 +46,10 @@ pub trait StackImpl {
     fn debug_print(&mut self, writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>);
 }
 
-impl StackImpl for Stack {
-    fn new() -> Result<Self, Error> {
-        let stack_bottom_ptr = unsafe { core::ptr::addr_of_mut!(BASINO_STACK_BUFFER) as *mut u8 };
-        let len = unsafe { BASINO_STACK_BUFFER.len() - 1 };
+impl<'a> StackImpl<'a> for Stack<'a> {
+    fn new(array: *mut u8, len: usize) -> Result<Self, Error> {
+        let stack_bottom_ptr = array;
+        let len = len - 1;
 
         let stack_top_ptr: *mut u8 = (stack_bottom_ptr as usize + len) as *mut u8;
 
@@ -55,6 +58,7 @@ impl StackImpl for Stack {
             top_sentinel: core::ptr::null_mut::<u8>(),
             bottom: core::ptr::null_mut::<u8>(),
             top: core::ptr::null_mut::<u8>(),
+            _marker: PhantomData,
         };
 
         let res = unsafe {
@@ -137,6 +141,8 @@ impl StackImpl for Stack {
 /// This doesn't use the standard Rust testing framework.  Instead it's a normal
 /// public module that can be called by other systems.
 pub mod tests {
+    use core::marker::PhantomData;
+
     use crate::{
         basino_get_basino_stack_bottom, basino_get_basino_stack_top,
         basino_get_basino_stack_top_sentinel, basino_stack_init, basino_stack_pop,
@@ -190,7 +196,10 @@ pub mod tests {
 
     /// Test that initializing the stack works
     pub fn test_stack_new_works(writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) {
-        let mut stack = Stack::new().unwrap();
+        let mut stack = Stack::new(unsafe { BASINO_STACK_BUFFER.as_mut_ptr() }, unsafe {
+            BASINO_STACK_BUFFER.len()
+        })
+        .unwrap();
 
         let expected_size = unsafe { BASINO_STACK_BUFFER.len() - 1 };
         let size = stack.size();
@@ -236,7 +245,10 @@ pub mod tests {
 
     /// Test that pushing a value on the stack works
     pub fn test_stack_push_works(writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) {
-        let mut stack = Stack::new().unwrap();
+        let mut stack = Stack::new(unsafe { BASINO_STACK_BUFFER.as_mut_ptr() }, unsafe {
+            BASINO_STACK_BUFFER.len()
+        })
+        .unwrap();
 
         let res = stack.push(5);
         write_test_result(writer, res.is_ok(), "should be able to push value");
@@ -254,7 +266,10 @@ pub mod tests {
     pub fn test_stack_empty_pop_fails(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let mut stack = Stack::new().unwrap();
+        let mut stack = Stack::new(unsafe { BASINO_STACK_BUFFER.as_mut_ptr() }, unsafe {
+            BASINO_STACK_BUFFER.len()
+        })
+        .unwrap();
 
         let res = stack.pop();
 
@@ -269,7 +284,10 @@ pub mod tests {
     pub fn test_stack_push_full_stack_fails(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let mut stack = Stack::new().unwrap();
+        let mut stack = Stack::new(unsafe { BASINO_STACK_BUFFER.as_mut_ptr() }, unsafe {
+            BASINO_STACK_BUFFER.len()
+        })
+        .unwrap();
 
         for i in 0..stack.size() {
             let n = (i % 255) as u8;
@@ -302,7 +320,10 @@ pub mod tests {
     pub fn test_stack_push_full_stack_pop_full_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let mut stack = Stack::new().unwrap();
+        let mut stack = Stack::new(unsafe { BASINO_STACK_BUFFER.as_mut_ptr() }, unsafe {
+            BASINO_STACK_BUFFER.len()
+        })
+        .unwrap();
 
         for i in 0..stack.size() {
             let n = (i % 256) as u8;
@@ -394,6 +415,7 @@ pub mod tests {
             top_sentinel: core::ptr::null_mut::<u8>(),
             bottom: core::ptr::null_mut::<u8>(),
             top: core::ptr::null_mut::<u8>(),
+            _marker: PhantomData,
         };
 
         let res = unsafe {
@@ -423,6 +445,7 @@ pub mod tests {
             top_sentinel: core::ptr::null_mut::<u8>(),
             bottom: core::ptr::null_mut::<u8>(),
             top: core::ptr::null_mut::<u8>(),
+            _marker: PhantomData,
         };
 
         let res = unsafe {
@@ -452,6 +475,7 @@ pub mod tests {
             top_sentinel: core::ptr::null_mut::<u8>(),
             bottom: core::ptr::null_mut::<u8>(),
             top: core::ptr::null_mut::<u8>(),
+            _marker: PhantomData,
         };
 
         let res = unsafe {
@@ -479,6 +503,7 @@ pub mod tests {
             top_sentinel: core::ptr::null_mut::<u8>(),
             bottom: core::ptr::null_mut::<u8>(),
             top: core::ptr::null_mut::<u8>(),
+            _marker: PhantomData,
         };
 
         let res = unsafe {
