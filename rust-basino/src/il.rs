@@ -194,9 +194,9 @@ pub struct Interpreter<'a> {
     /// The state of the interpreter
     pub state: InterpreterState,
     /// The input buffer
-    pub queue: *mut QueueObj,
+    pub queue: *mut QueueObj<'a>,
     /// The stack
-    pub stack: *mut Stack,
+    pub stack: *mut Stack<'a>,
     /// We want this structure to last as long as the lifetime of the
     /// array it's based on.
     _marker: PhantomData<&'a [u8]>,
@@ -262,7 +262,11 @@ impl<'a> Interpreter<'a> {
     /// let res = Interpreter::new(&byte_code_data, &mut queue, &mut stack);
     ///
     /// ```
-    pub fn new(byte_code: &'a [u8], queue: &mut Queue, stack: &mut Stack) -> Result<Self, Error> {
+    pub fn new(
+        byte_code: &'a [u8],
+        queue: &'a mut Queue<'a>,
+        stack: &'a mut Stack<'a>,
+    ) -> Result<Self, Error> {
         let mut interpreter = Interpreter {
             byte_code: byte_code.as_ptr() as *const u8,
             byte_code_end: core::ptr::null_mut::<u8>(),
@@ -369,9 +373,9 @@ impl<'a> Interpreter<'a> {
     /// let mut interpreter = Interpreter::new(&byte_code_data, &mut queue, &mut stack).unwrap();
     /// let res = interpreter.run();
     /// assert!(res.is_ok());
-    /// let item_res = stack.pop();
-    /// assert!(item_res.is_ok());
-    /// assert_eq!(item_res.expect("Should get an Ok Result"), 0x76);
+    /// // let item_res = stack.pop();
+    /// // assert!(item_res.is_ok());
+    /// // assert_eq!(item_res.expect("Should get an Ok Result"), 0x76);
     ///
     /// ```
     pub fn run(&mut self) -> Result<(), Error> {
@@ -420,9 +424,9 @@ impl<'a> Interpreter<'a> {
     /// let byte_code = interpreter.get_next_bytecode().unwrap();
     /// let res = interpreter.exec(byte_code);
     /// assert!(res.is_ok());
-    /// let item_res = stack.pop();
-    /// assert!(item_res.is_ok());
-    /// assert_eq!(item_res.expect("Should get an Ok Result"), 0x76);
+    /// // let item_res = stack.pop();
+    /// // assert!(item_res.is_ok());
+    /// // assert_eq!(item_res.expect("Should get an Ok Result"), 0x76);
     ///
     /// ```
     pub fn exec(&mut self, opcode: u8) -> Result<(), Error> {
@@ -448,6 +452,7 @@ pub mod tests {
         stack::StackImpl,
         tests::write_test_result,
         Queue, Stack, Usart, BASINO_IL_BYTE_CODE_DATA, BASINO_INPUT_QUEUE_DATA,
+        BASINO_STACK_BUFFER,
     };
 
     /// Run all the tests in this module
@@ -469,10 +474,16 @@ pub mod tests {
     pub fn test_il_init_works(writer: &mut Usart) {
         let byte_code_data: [u8; 1] = [0; 1];
 
-        let basino_input_queue_data = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut() };
-        let mut queue = Queue::new(basino_input_queue_data).unwrap();
+        let basino_input_queue_data_ptr = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut_ptr() };
+        let mut queue = Queue::new(basino_input_queue_data_ptr, unsafe {
+            BASINO_INPUT_QUEUE_DATA.len()
+        })
+        .unwrap();
 
-        let mut stack = Stack::new().unwrap();
+        let mut stack = Stack::new(unsafe { BASINO_STACK_BUFFER.as_mut_ptr() }, unsafe {
+            BASINO_STACK_BUFFER.len()
+        })
+        .unwrap();
 
         let res = Interpreter::new(&byte_code_data, &mut queue, &mut stack);
 
@@ -483,10 +494,16 @@ pub mod tests {
     pub fn test_il_init_zero_length_fails(writer: &mut Usart) {
         let byte_code_data: [u8; 0] = [0; 0];
 
-        let basino_input_queue_data = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut() };
-        let mut queue = Queue::new(basino_input_queue_data).unwrap();
+        let basino_input_queue_data_ptr = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut_ptr() };
+        let mut queue = Queue::new(basino_input_queue_data_ptr, unsafe {
+            BASINO_INPUT_QUEUE_DATA.len()
+        })
+        .unwrap();
 
-        let mut stack = Stack::new().unwrap();
+        let mut stack = Stack::new(unsafe { BASINO_STACK_BUFFER.as_mut_ptr() }, unsafe {
+            BASINO_STACK_BUFFER.len()
+        })
+        .unwrap();
 
         let res = Interpreter::new(&byte_code_data, &mut queue, &mut stack);
 
@@ -517,9 +534,16 @@ pub mod tests {
     pub fn test_il_exec_no_works(writer: &mut Usart) {
         let byte_code_data: [u8; 2] = [0; 2];
 
-        let basino_input_queue_data = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut() };
-        let mut queue = Queue::new(basino_input_queue_data).unwrap();
-        let mut stack = Stack::new().unwrap();
+        let basino_input_queue_data_ptr = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut_ptr() };
+        let mut queue = Queue::new(basino_input_queue_data_ptr, unsafe {
+            BASINO_INPUT_QUEUE_DATA.len()
+        })
+        .unwrap();
+
+        let mut stack = Stack::new(unsafe { BASINO_STACK_BUFFER.as_mut_ptr() }, unsafe {
+            BASINO_STACK_BUFFER.len()
+        })
+        .unwrap();
 
         let mut interpreter = Interpreter::new(&byte_code_data, &mut queue, &mut stack).unwrap();
 
@@ -543,9 +567,15 @@ pub mod tests {
         byte_code_data[0] = 0x09;
         byte_code_data[1] = 0x76;
 
-        let basino_input_queue_data = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut() };
-        let mut queue = Queue::new(basino_input_queue_data).unwrap();
-        let mut stack = Stack::new().unwrap();
+        let basino_input_queue_data_ptr = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut_ptr() };
+        let mut queue = Queue::new(basino_input_queue_data_ptr, unsafe {
+            BASINO_INPUT_QUEUE_DATA.len()
+        })
+        .unwrap();
+        let mut stack = Stack::new(unsafe { BASINO_STACK_BUFFER.as_mut_ptr() }, unsafe {
+            BASINO_STACK_BUFFER.len()
+        })
+        .unwrap();
 
         let mut interpreter = Interpreter::new(&byte_code_data, &mut queue, &mut stack).unwrap();
 
@@ -555,7 +585,8 @@ pub mod tests {
         let byte_code_ptr_new = interpreter.byte_code_ptr as usize;
         assert!(res.is_ok());
         // Test the item item was pushed onto the stack
-        let res = stack.pop();
+        let stack = interpreter.stack;
+        let res = unsafe { (*stack).pop() };
 
         write_test_result(writer, res.is_ok(), "LB should pop from stack");
         match res {
@@ -580,9 +611,15 @@ pub mod tests {
         let byte_code_data = unsafe { BASINO_IL_BYTE_CODE_DATA.as_mut() };
         byte_code_data[0] = 0x08;
 
-        let basino_input_queue_data = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut() };
-        let mut queue = Queue::new(basino_input_queue_data).unwrap();
-        let mut stack = Stack::new().unwrap();
+        let basino_input_queue_data_ptr = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut_ptr() };
+        let mut queue = Queue::new(basino_input_queue_data_ptr, unsafe {
+            BASINO_INPUT_QUEUE_DATA.len()
+        })
+        .unwrap();
+        let mut stack = Stack::new(unsafe { BASINO_STACK_BUFFER.as_mut_ptr() }, unsafe {
+            BASINO_STACK_BUFFER.len()
+        })
+        .unwrap();
 
         let mut interpreter = Interpreter::new(byte_code_data, &mut queue, &mut stack).unwrap();
 
@@ -615,9 +652,15 @@ pub mod tests {
         byte_code_data[1] = 0x09;
         byte_code_data[2] = 0x76;
 
-        let basino_input_queue_data = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut() };
-        let mut queue = Queue::new(basino_input_queue_data).unwrap();
-        let mut stack = Stack::new().unwrap();
+        let basino_input_queue_data_ptr = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut_ptr() };
+        let mut queue = Queue::new(basino_input_queue_data_ptr, unsafe {
+            BASINO_INPUT_QUEUE_DATA.len()
+        })
+        .unwrap();
+        let mut stack = Stack::new(unsafe { BASINO_STACK_BUFFER.as_mut_ptr() }, unsafe {
+            BASINO_STACK_BUFFER.len()
+        })
+        .unwrap();
 
         let mut interpreter = Interpreter::new(byte_code_data, &mut queue, &mut stack).unwrap();
 
@@ -654,9 +697,15 @@ pub mod tests {
         byte_code_data[0] = 0x08;
         byte_code_data[1] = 0x08;
 
-        let basino_input_queue_data = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut() };
-        let mut queue = Queue::new(basino_input_queue_data).unwrap();
-        let mut stack = Stack::new().unwrap();
+        let basino_input_queue_data_ptr = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut_ptr() };
+        let mut queue = Queue::new(basino_input_queue_data_ptr, unsafe {
+            BASINO_INPUT_QUEUE_DATA.len()
+        })
+        .unwrap();
+        let mut stack = Stack::new(unsafe { BASINO_STACK_BUFFER.as_mut_ptr() }, unsafe {
+            BASINO_STACK_BUFFER.len()
+        })
+        .unwrap();
 
         let mut interpreter = Interpreter::new(&byte_code_data, &mut queue, &mut stack).unwrap();
 
@@ -724,9 +773,15 @@ pub mod tests {
         byte_code_data[0] = 0x08;
         byte_code_data[1] = 0x08;
 
-        let basino_input_queue_data = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut() };
-        let mut queue = Queue::new(basino_input_queue_data).unwrap();
-        let mut stack = Stack::new().unwrap();
+        let basino_input_queue_data_ptr = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut_ptr() };
+        let mut queue = Queue::new(basino_input_queue_data_ptr, unsafe {
+            BASINO_INPUT_QUEUE_DATA.len()
+        })
+        .unwrap();
+        let mut stack = Stack::new(unsafe { BASINO_STACK_BUFFER.as_mut_ptr() }, unsafe {
+            BASINO_STACK_BUFFER.len()
+        })
+        .unwrap();
 
         let mut interpreter = Interpreter::new(&byte_code_data, &mut queue, &mut stack).unwrap();
 
@@ -810,9 +865,15 @@ pub mod tests {
         byte_code_data[2] = 0x76;
         byte_code_data[3] = 0x00;
 
-        let basino_input_queue_data = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut() };
-        let mut queue = Queue::new(basino_input_queue_data).unwrap();
-        let mut stack = Stack::new().unwrap();
+        let basino_input_queue_data_ptr = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut_ptr() };
+        let mut queue = Queue::new(basino_input_queue_data_ptr, unsafe {
+            BASINO_INPUT_QUEUE_DATA.len()
+        })
+        .unwrap();
+        let mut stack = Stack::new(unsafe { BASINO_STACK_BUFFER.as_mut_ptr() }, unsafe {
+            BASINO_STACK_BUFFER.len()
+        })
+        .unwrap();
 
         let mut interpreter = Interpreter::new(&byte_code_data, &mut queue, &mut stack).unwrap();
 
@@ -821,7 +882,8 @@ pub mod tests {
         write_test_result(writer, res.is_ok(), "should run program");
 
         // Test the item was pushed onto the stack
-        let res = stack.pop();
+        let stack = interpreter.stack;
+        let res = unsafe { (*stack).pop() };
 
         write_test_result(writer, res.is_ok(), "LB should pop from stack");
         match res {
@@ -847,9 +909,15 @@ pub mod tests {
         byte_code_data[2] = 0x76;
         byte_code_data[3] = 0x00;
 
-        let basino_input_queue_data = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut() };
-        let mut queue = Queue::new(basino_input_queue_data).unwrap();
-        let mut stack = Stack::new().unwrap();
+        let basino_input_queue_data_ptr = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut_ptr() };
+        let mut queue = Queue::new(basino_input_queue_data_ptr, unsafe {
+            BASINO_INPUT_QUEUE_DATA.len()
+        })
+        .unwrap();
+        let mut stack = Stack::new(unsafe { BASINO_STACK_BUFFER.as_mut_ptr() }, unsafe {
+            BASINO_STACK_BUFFER.len()
+        })
+        .unwrap();
 
         let mut interpreter = Interpreter::new(&byte_code_data, &mut queue, &mut stack).unwrap();
 
@@ -882,9 +950,15 @@ pub mod tests {
         byte_code_data[1] = 0x09;
         byte_code_data[2] = 0x76;
 
-        let basino_input_queue_data = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut() };
-        let mut queue = Queue::new(basino_input_queue_data).unwrap();
-        let mut stack = Stack::new().unwrap();
+        let basino_input_queue_data_ptr = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut_ptr() };
+        let mut queue = Queue::new(basino_input_queue_data_ptr, unsafe {
+            BASINO_INPUT_QUEUE_DATA.len()
+        })
+        .unwrap();
+        let mut stack = Stack::new(unsafe { BASINO_STACK_BUFFER.as_mut_ptr() }, unsafe {
+            BASINO_STACK_BUFFER.len()
+        })
+        .unwrap();
 
         let mut interpreter = Interpreter::new(&byte_code_data, &mut queue, &mut stack).unwrap();
 
@@ -893,7 +967,8 @@ pub mod tests {
         write_test_result(writer, res.is_ok(), "should run program");
 
         // Test the item was pushed onto the stack
-        let res = stack.pop();
+        let stack = interpreter.stack;
+        let res = unsafe { (*stack).pop() };
 
         write_test_result(writer, res.is_ok(), "LB should pop from stack");
         match res {

@@ -5,8 +5,10 @@
 #![feature(abi_avr_interrupt)]
 #![feature(ptr_from_ref)]
 
-use core::fmt::{Debug, Formatter};
-
+use core::{
+    fmt::{Debug, Formatter},
+    marker::PhantomData,
+};
 use ufmt::{uDebug, uWrite};
 
 /// Error data types
@@ -41,7 +43,7 @@ pub type Usart = arduino_hal::hal::usart::Usart0<arduino_hal::DefaultClock>;
 /// The stack_top_sentinel is located at top of the stack, it contains
 /// the address of the top and provides padding for the stack.
 #[repr(C)]
-pub struct Stack {
+pub struct Stack<'a> {
     /// The actual stack array which holds the data
     pub data: *mut u8,
 
@@ -53,9 +55,13 @@ pub struct Stack {
 
     /// The stack top
     pub top: *mut u8,
+
+    /// We want this structure to last as long as the lifetime of the array
+    /// its based on.
+    _marker: PhantomData<&'a u8>,
 }
 
-impl Debug for Stack {
+impl<'a> Debug for Stack<'a> {
     fn fmt(&self, f: &mut Formatter) -> core::fmt::Result {
         write!(f, "  stack data 0x{}", &(self.data as usize))?;
         write!(f, ", top sentinel: 0x{}", &(self.top_sentinel as usize))?;
@@ -65,7 +71,7 @@ impl Debug for Stack {
     }
 }
 
-impl uDebug for Stack {
+impl<'a> uDebug for Stack<'a> {
     fn fmt<T>(&self, f: &mut ufmt::Formatter<'_, T>) -> core::result::Result<(), T::Error>
     where
         T: uWrite + ?Sized,
@@ -85,7 +91,7 @@ impl uDebug for Stack {
 
 /// The Queue data structure
 #[repr(C)]
-pub struct QueueObj {
+pub struct QueueObj<'a> {
     /// The actual queue array which holds the data
     pub queue: *mut u8,
     /// The address of the start of the queue
@@ -102,9 +108,13 @@ pub struct QueueObj {
     /// The tail points to the the location where the next item will
     /// be put.
     pub tail: *mut u8,
+
+    /// We want this structure to last as long as the lifetime of the array
+    /// its based on.
+    _marker: PhantomData<&'a u8>,
 }
 
-impl uDebug for QueueObj {
+impl<'a> uDebug for QueueObj<'a> {
     fn fmt<T>(&self, f: &mut ufmt::Formatter<'_, T>) -> core::result::Result<(), T::Error>
     where
         T: uWrite + ?Sized,
@@ -128,14 +138,14 @@ impl uDebug for QueueObj {
 /// This can be simplified after the initial structure refactor is
 /// done.
 #[repr(C)]
-pub struct Queue {
+pub struct Queue<'a> {
     /// The actual queue object
-    pub queue: QueueObj,
+    pub queue: QueueObj<'a>,
     /// Length of the queue.
     pub queue_len: usize,
 }
 
-impl uDebug for Queue {
+impl<'a> uDebug for Queue<'a> {
     fn fmt<T>(&self, f: &mut ufmt::Formatter<'_, T>) -> core::result::Result<(), T::Error>
     where
         T: uWrite + ?Sized,
