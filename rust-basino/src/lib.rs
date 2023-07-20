@@ -5,7 +5,9 @@
 #![feature(abi_avr_interrupt)]
 #![feature(ptr_from_ref)]
 
-use core::marker::PhantomData;
+use core::{cell::RefCell, marker::PhantomData};
+
+use avr_device::interrupt::Mutex;
 
 /// Error data types
 pub mod error;
@@ -15,6 +17,35 @@ pub mod queue;
 
 /// Stack functions and data structures
 pub mod stack;
+
+/// A handle to an array to manage lifetimes and concurrency
+pub struct ArrayHandle<'a, T> {
+    /// Pointer to the array
+    pub ptr: *mut T,
+    /// Length of the array
+    pub len: usize,
+    /// We want to have a lifetime on an ArrayHandle tied to the data
+    pub _marker: PhantomData<&'a T>,
+}
+
+impl<'a, T> ArrayHandle<'a, T> {
+    /// Create a new ArrayHandle from an array pointer and length.
+    ///
+    /// # Examples
+    /// ```
+    /// use crate::ArrayHandle;
+    ///
+    /// let mut arr: [u8; 4] = [0; 4];
+    /// let _handle = ArrayHandle::new(arr.as_mut_ptr(), arr.len());
+    /// ```
+    pub fn new(ptr: *mut T, len: usize) -> Self {
+        ArrayHandle {
+            ptr,
+            len,
+            _marker: PhantomData,
+        }
+    }
+}
 
 // We can only have one link section for the same library file
 // Otherwise it tries to include the library twice, so C externs are
@@ -100,9 +131,6 @@ pub static mut DEVICE_PERIPHERALS_SPACE: u8 = 0;
 // Putting everything into a single structure is correctly allocating the data
 // in the .ram2bss section now, but not in the right location according to our
 // memory.x linker script
-/// The stack object we pass into the C / assembly code to store data
-#[link_section = ".ram2bss"]
-pub static mut BASINO_STACK: Option<Stack> = None;
 
 /// The stack buffer that stores the data C / assembly code to store data
 /// The length of the stack is the length of this buffer minus one.
@@ -113,10 +141,18 @@ pub static mut BASINO_STACK: Option<Stack> = None;
 /// and DS40002198B (AVR® Instruction Set Manual)
 ///
 /// Several unofficial references online make the point that 16-bit
-/// memory accesses are composed of two 8-bit accesses.  Even still, we'll
-/// align two bytes here.  The extra byte is assumed unneeded.
+/// memory accesses are composed of two 8-bit accesses.
 #[link_section = ".ram2bss"]
-pub static mut BASINO_STACK_BUFFER: [u8; 33] = [0; 33];
+static mut BASINO_STACK_BUFFER: [u8; 33] = [0; 33];
+
+/// Handle to wrap the stack array and allow safe management of it
+pub static mut BASINO_STACK_BUFFER_HANDLE: Mutex<RefCell<Option<ArrayHandle<u8>>>> = unsafe {
+    Mutex::new(RefCell::new(Some(ArrayHandle {
+        ptr: BASINO_STACK_BUFFER.as_mut_ptr(),
+        len: BASINO_STACK_BUFFER.len(),
+        _marker: PhantomData,
+    })))
+};
 
 /// The queue object we pass into the C / assembly code to store data
 #[link_section = ".ram2bss"]
