@@ -23,7 +23,7 @@ use crate::{
     basino_get_basino_stack_bottom, basino_get_basino_stack_top,
     basino_get_basino_stack_top_sentinel, basino_stack_init, basino_stack_pop, basino_stack_push,
     error::{Error, ErrorKind},
-    Stack,
+    ArrayHandle, Stack,
 };
 
 /// Basic functions for a stack
@@ -44,6 +44,22 @@ pub trait StackImpl<'a> {
     /// ```
     #[allow(clippy::new_ret_no_self)]
     fn new(array: *mut u8, len: usize) -> Result<Stack<'a>, Error>;
+
+    /// Create a new Stack from an ArrayHandle
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crate::{ArrayHandle, stack::{Stack, StackImpl}};
+    ///
+    /// let mut arr: [u8; 4] = [0; 4];
+    /// let stack_handle = ArrayHandle::new(arr.as_mut_ptr(), arr.len());
+    /// let stack_res = Stack::new(&stack_handle);
+    ///
+    /// assert!(stack_res.is_ok());
+    ///
+    /// ```
+    fn new_from_array_handle(handle: &ArrayHandle<'a, u8>) -> Result<Stack<'a>, Error>;
 
     /// Pop a value from the stack
     ///
@@ -127,6 +143,11 @@ impl<'a> StackImpl<'a> for Stack<'a> {
             _ => Err(Error::new(ErrorKind::Unknown)),
         }
     }
+
+    fn new_from_array_handle(handle: &ArrayHandle<'a, u8>) -> Result<Self, Error> {
+        Stack::new(handle.ptr, handle.len)
+    }
+
     fn pop(&mut self) -> Result<u8, Error> {
         let mut result: u8 = 0;
         let res =
