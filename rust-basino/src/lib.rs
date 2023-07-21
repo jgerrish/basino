@@ -187,21 +187,68 @@ extern "C" {
     /// It sets the current top and bottom to those values.
     /// The top is a top sentinel, it should be one above the stack
     /// size.
+    ///
+    /// # Safety
+    ///
+    /// The provided stack must not be a null pointer and must point
+    /// to valid stack structure.  It is the responsiblity of the
+    /// caller to allocate and deallocate the stack structure.
+    ///
+    /// top and bottom must point to valid memory locations.  The
+    /// allocation of the memory is the responsibility of the caller.
+    ///
+    /// top must be greater than the bottom.
     pub fn basino_stack_init(stack: *mut Stack, top: *mut u8, bottom: *mut u8) -> u8;
 
     /// Push a value onto the stack
+    ///
+    /// # Safety
+    ///
+    /// The provided stack must not be a null pointer and must point
+    /// to valid stack structure.  It is the responsiblity of the
+    /// caller to allocate and deallocate the stack structure.
     pub fn basino_stack_push(stack: *const Stack, value: u8) -> u8;
 
     /// Pop a value from the stack
+    ///
+    /// # Safety
+    ///
+    /// The provided stack must not be a null pointer and must point
+    /// to valid stack structure.  It is the responsiblity of the
+    /// caller to allocate and deallocate the stack structure.
+    ///
+    /// Result must point to valid memory that is used to store the
+    /// result.
+    ///
+    /// It is the resposiblity of the caller to allocate and
+    /// deallocate that memory.
     pub fn basino_stack_pop(stack: *const Stack, result: *mut u8) -> u8;
 
     /// Get the address of the bottom of the stack
+    ///
+    /// # Safety
+    ///
+    /// The provided stack must not be a null pointer and must point
+    /// to valid stack structure.  It is the responsiblity of the
+    /// caller to allocate and deallocate the stack structure.
     pub fn basino_get_basino_stack_bottom(stack: *const Stack) -> *const u8;
 
     /// Get the address of the top of the stack
+    ///
+    /// # Safety
+    ///
+    /// The provided stack must not be a null pointer and must point
+    /// to valid stack structure.  It is the responsiblity of the
+    /// caller to allocate and deallocate the stack structure.
     pub fn basino_get_basino_stack_top(stack: *const Stack) -> *const u8;
 
     /// Get the address of the top of the stack sentinitel
+    ///
+    /// # Safety
+    ///
+    /// The provided stack must not be a null pointer and must point
+    /// to valid stack structure.  It is the responsiblity of the
+    /// caller to allocate and deallocate the stack structure.
     pub fn basino_get_basino_stack_top_sentinel(stack: *const Stack) -> *const u8;
 
     // /// Get the stack size
