@@ -5,9 +5,9 @@
 #![feature(abi_avr_interrupt)]
 #![feature(ptr_from_ref)]
 
+use avr_device::interrupt::Mutex;
 use core::{cell::RefCell, marker::PhantomData};
 use ufmt::{uDebug, uWrite};
-use avr_device::interrupt::Mutex;
 
 /// Error data types
 pub mod error;
@@ -23,6 +23,17 @@ pub struct ArrayHandle<'a, T> {
     /// Pointer to the array
     pub ptr: *mut T,
     /// Length of the array
+
+    /// This is the number of elements the array can hold, not
+    /// necessarily the number of bytes.
+    ///
+    /// For example, for the following array:
+    /// let mut arr: [u8; 4] = [0; 4];
+    /// len would be 4
+    ///
+    /// For the following array:
+    /// let mut arr: [u16; 4] = [0; 4];
+    /// len would also be 4
     pub len: usize,
     /// We want to have a lifetime on an ArrayHandle tied to the data
     pub _marker: PhantomData<&'a T>,
@@ -191,12 +202,16 @@ pub static mut BASINO_STACK_BUFFER_HANDLE: Mutex<RefCell<Option<ArrayHandle<u8>>
 
 /// The queue object we pass into the C / assembly code to store data
 #[link_section = ".ram2bss"]
-pub static mut BASINO_QUEUE_DATA: [u8; 4] = [0; 4];
+static mut BASINO_QUEUE_DATA: [u8; 4] = [0; 4];
 
-/// The queue object we pass into the C / assembly code to store data
-/// This should be initialized by the code before being used
-#[link_section = ".ram2bss"]
-pub static mut BASINO_QUEUE: Option<Queue> = None;
+/// Handle to wrap the stack array and allow safe management of it
+pub static mut BASINO_QUEUE_DATA_HANDLE: Mutex<RefCell<Option<ArrayHandle<u8>>>> = unsafe {
+    Mutex::new(RefCell::new(Some(ArrayHandle {
+        ptr: BASINO_QUEUE_DATA.as_mut_ptr(),
+        len: BASINO_QUEUE_DATA.len(),
+        _marker: PhantomData,
+    })))
+};
 
 #[link(name = "basino")]
 extern "C" {
