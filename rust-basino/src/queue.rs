@@ -86,9 +86,37 @@ impl Display for Error {
 /// Basic functions for a queue
 pub trait QueueImpl {
     /// Put or enqueue a value in the queue
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crate::{ArrayHandle, queue::{Queue, QueueImpl}};
+    ///
+    /// let mut arr: [u8; 4] = [0; 4];
+    /// let queue_handle = ArrayHandle::new(arr.as_mut_ptr(), arr.len());
+    /// let mut queue = Queue::new_from_array_handle(&queue_handle).unwrap();
+    ///
+    /// let put_res = queue.put(3);
+    /// assert!(put_res.is_ok());
+    /// ```
     fn put(&mut self, value: u8) -> Result<(), Error>;
 
     /// Get or dequeue a value from the queue
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crate::{ArrayHandle, queue::{Queue, QueueImpl}};
+    ///
+    /// let mut arr: [u8; 4] = [0; 4];
+    /// let queue_handle = ArrayHandle::new(arr.as_mut_ptr(), arr.len());
+    /// let mut queue = Queue::new_from_array_handle(&queue_handle).unwrap();
+    ///
+    /// queue.put(3).unwrap();
+    /// let get_res = queue.get();
+    /// assert!(get_res.is_ok());
+    /// assert_eq!(get_res.expect("Should get a value"), 3);
+    /// ```
     fn get(&mut self) -> Result<u8, Error>;
 
     // Debugging functions
@@ -107,10 +135,23 @@ pub trait QueueImpl {
 }
 
 impl<'a> Queue<'a> {
-    fn new(queue_array: *mut u8, len: usize) -> Result<Self, Error> {
+    /// Create a new queue
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crate::{ArrayHandle, queue::{Queue, QueueImpl}};
+    ///
+    /// let mut arr: [u8; 4] = [0; 4];
+    /// let arr_ptr = arr.as_mut_ptr();
+    /// let queue_res = Queue::new(&arr_ptr, arr.len());
+    ///
+    /// assert!(queue_res.is_ok());
+    /// ```
+    fn new(queue_array: &'a *mut u8, len: usize) -> Result<Self, Error> {
         // Initialize the queue
         // Set the queue start to the beginning of the queue array
-        let queue_start = queue_array;
+        let queue_start = *queue_array;
 
         // Set the queue end to the start plus the length minus one
         // Why minus one?  Not because of the head/tail limitations,
@@ -147,8 +188,21 @@ impl<'a> Queue<'a> {
         }
     }
 
+    /// Create a new queue from an array handle
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crate::{ArrayHandle, queue::{Queue, QueueImpl}};
+    ///
+    /// let mut arr: [u8; 4] = [0; 4];
+    /// let queue_handle = ArrayHandle::new(arr.as_mut_ptr(), arr.len());
+    /// let queue_res = Queue::new_from_array_handle(&queue_handle);
+    ///
+    /// assert!(queue_res.is_ok());
+    /// ```
     fn new_from_array_handle(handle: &'a ArrayHandle<'a, u8>) -> Result<Queue<'a>, Error> {
-        Queue::new(handle.ptr, handle.len)
+        Queue::new(&handle.ptr, handle.len)
     }
 }
 
