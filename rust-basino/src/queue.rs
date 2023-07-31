@@ -135,7 +135,7 @@ pub trait QueueImpl {
 }
 
 impl<'a> Queue<'a> {
-    /// Create a new queue
+    /// Create a new queue from an array handle
     ///
     /// # Examples
     ///
@@ -143,13 +143,16 @@ impl<'a> Queue<'a> {
     /// use crate::{ArrayHandle, queue::{Queue, QueueImpl}};
     ///
     /// let mut arr: [u8; 4] = [0; 4];
-    /// let arr_ptr = arr.as_mut_ptr();
-    /// let queue_res = Queue::new(&arr_ptr, arr.len());
+    /// let queue_handle = ArrayHandle::new(arr.as_mut_ptr(), arr.len());
+    /// let queue_res = Queue::new(&queue_handle);
     ///
     /// assert!(queue_res.is_ok());
     /// ```
-    fn new(queue_array: *mut u8, len: usize) -> Result<Self, Error> {
+    fn new(handle: &'a ArrayHandle<'a, u8>) -> Result<Queue<'a>, Error> {
         // Initialize the queue
+        let queue_array = handle.ptr;
+        let len = handle.len;
+
         // Set the queue start to the beginning of the queue array
         let queue_start = queue_array;
 
@@ -186,23 +189,6 @@ impl<'a> Queue<'a> {
             2 => Err(Error::new(ErrorKind::InvalidArguments)),
             _ => Err(Error::new(ErrorKind::Unknown)),
         }
-    }
-
-    /// Create a new queue from an array handle
-    ///
-    /// # Examples
-    ///
-    /// ```
-    /// use crate::{ArrayHandle, queue::{Queue, QueueImpl}};
-    ///
-    /// let mut arr: [u8; 4] = [0; 4];
-    /// let queue_handle = ArrayHandle::new(arr.as_mut_ptr(), arr.len());
-    /// let queue_res = Queue::new_from_array_handle(&queue_handle);
-    ///
-    /// assert!(queue_res.is_ok());
-    /// ```
-    fn new_from_array_handle(handle: &'a ArrayHandle<'a, u8>) -> Result<Queue<'a>, Error> {
-        Queue::new(handle.ptr, handle.len)
     }
 }
 
@@ -375,7 +361,7 @@ pub mod tests {
             let queue_handle =
                 free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
-            let res = Queue::new_from_array_handle(&queue_handle);
+            let res = Queue::new(&queue_handle);
 
             write_test_result(writer, res.is_ok(), "should initialize queue");
 
@@ -393,7 +379,7 @@ pub mod tests {
             let queue_handle =
                 free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
-            let mut queue = Queue::new_from_array_handle(&queue_handle).unwrap();
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
             let res = queue.get();
             write_test_result(writer, res.is_err(), "get from empty queue should fail");
@@ -409,7 +395,7 @@ pub mod tests {
             let queue_handle =
                 free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
-            let mut queue = Queue::new_from_array_handle(&queue_handle).unwrap();
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
             let res = queue.put(5);
 
@@ -441,7 +427,7 @@ pub mod tests {
             let queue_handle =
                 free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
-            let mut queue = Queue::new_from_array_handle(&queue_handle).unwrap();
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
             // First, put both items
 
@@ -488,7 +474,7 @@ pub mod tests {
             let queue_handle =
                 free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
-            let mut queue = Queue::new_from_array_handle(&queue_handle).unwrap();
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
             for i in 1..queue.queue_len {
                 let res = queue.put((i % 256) as u8);
@@ -523,7 +509,7 @@ pub mod tests {
             let queue_handle =
                 free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
-            let mut queue = Queue::new_from_array_handle(&queue_handle).unwrap();
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
             for i in 1..queue.queue_len {
                 let _res = queue.put((i % 256) as u8);
@@ -552,7 +538,7 @@ pub mod tests {
             let queue_handle =
                 free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
-            let mut queue = Queue::new_from_array_handle(&queue_handle).unwrap();
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
             let res = queue.put(0x23_u8);
             write_test_result(writer, res.is_ok(), "single put of 0x23 should work");
@@ -582,7 +568,7 @@ pub mod tests {
             let queue_handle =
                 free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
-            let mut queue = Queue::new_from_array_handle(&queue_handle).unwrap();
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
             // ufmt::uwriteln!(writer, "array: {:?}", unsafe { BASINO_QUEUE_DATA }).unwrap();
             // for i in 1..queue.queue_len goes from 1 to (queue.queue_len - 1) inclusive
@@ -634,7 +620,7 @@ pub mod tests {
             let queue_handle =
                 free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
-            let mut queue = Queue::new_from_array_handle(&queue_handle).unwrap();
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
             // for i in 1..queue.queue_len goes from 1 to (queue.queue_len - 1) inclusive
             // So, if queue.queue_len is 4, this iterates through [1, 2, 3]
@@ -688,7 +674,7 @@ pub mod tests {
             let queue_handle =
                 free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
-            let mut queue = Queue::new_from_array_handle(&queue_handle).unwrap();
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
             // put in two items [1, 2]
             for i in [1, 2] {
@@ -742,7 +728,7 @@ pub mod tests {
             let queue_handle =
                 free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
-            let mut queue = Queue::new_from_array_handle(&queue_handle).unwrap();
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
             // for i in 1..queue.queue_len goes from 1 to (queue.queue_len - 1) inclusive
             // So, if queue.queue_len is 4, this iterates through [1, 2, 3]
@@ -963,7 +949,7 @@ pub mod tests {
                 free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
             let queue_start = queue_handle.ptr;
             let queue_end = (queue_start as usize + (queue_handle.len - 1)) as *mut u8;
-            let mut queue = Queue::new_from_array_handle(&queue_handle).unwrap();
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
             let last_head = queue.get_last_head();
 
@@ -987,7 +973,7 @@ pub mod tests {
                 free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
             let queue_start = queue_handle.ptr;
-            let mut queue = Queue::new_from_array_handle(&queue_handle).unwrap();
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
             let head = queue.get_head();
 
@@ -1011,7 +997,7 @@ pub mod tests {
                 free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
             let queue_start = queue_handle.ptr;
-            let mut queue = Queue::new_from_array_handle(&queue_handle).unwrap();
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
             let tail = queue.get_tail();
 
@@ -1035,7 +1021,7 @@ pub mod tests {
                 free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
             let queue_start = queue_handle.ptr;
-            let mut queue = Queue::new_from_array_handle(&queue_handle).unwrap();
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
             let res = queue.get_start();
 
@@ -1059,7 +1045,7 @@ pub mod tests {
                 free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
             let queue_start = queue_handle.ptr;
             let queue_end = (queue_start as usize + (queue_handle.len - 1)) as *mut u8;
-            let mut queue = Queue::new_from_array_handle(&queue_handle).unwrap();
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
             let res = queue.get_end();
 
