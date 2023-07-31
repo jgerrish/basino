@@ -37,13 +37,13 @@ pub trait StackImpl<'a> {
     ///
     /// let mut arr: [u8; 4] = [0; 4];
     /// let stack_handle = ArrayHandle::new(arr.as_mut_ptr(), arr.len());
-    /// let mut stack_res = Stack::new(&stack_handle.ptr, stack_handle.len);
+    /// let mut stack_res = Stack::new(stack_handle.ptr, stack_handle.len);
     ///
     /// assert!(stack_res.is_ok());
     ///
     /// ```
     #[allow(clippy::new_ret_no_self)]
-    fn new(array: &'a *mut u8, len: usize) -> Result<Stack<'a>, Error>;
+    fn new(array: *mut u8, len: usize) -> Result<Stack<'a>, Error>;
 
     /// Create a new Stack from an ArrayHandle
     ///
@@ -59,7 +59,7 @@ pub trait StackImpl<'a> {
     /// assert!(stack_res.is_ok());
     ///
     /// ```
-    fn new_from_array_handle(handle: &'a ArrayHandle<'a, u8>) -> Result<Stack<'a>, Error>;
+    fn new_from_array_handle(handle: &ArrayHandle<'a, u8>) -> Result<Stack<'a>, Error>;
 
     /// Pop a value from the stack
     ///
@@ -70,7 +70,7 @@ pub trait StackImpl<'a> {
     ///
     /// let mut arr: [u8; 4] = [0; 4];
     /// let stack_handle = ArrayHandle::new(arr.as_mut_ptr(), arr.len());
-    /// let mut stack = Stack::new(&stack_handle.ptr, stack_handle.len).unwrap();
+    /// let mut stack = Stack::new(stack_handle.ptr, stack_handle.len).unwrap();
     ///
     /// stack.push(3);
     /// let pop_res = stack.pop();
@@ -87,7 +87,7 @@ pub trait StackImpl<'a> {
     ///
     /// let mut arr: [u8; 4] = [0; 4];
     /// let stack_handle = ArrayHandle::new(arr.as_mut_ptr(), arr.len());
-    /// let mut stack = Stack::new(&stack_handle.ptr, stack_handle.len).unwrap();
+    /// let mut stack = Stack::new(stack_handle.ptr, stack_handle.len).unwrap();
     ///
     /// let push_res = stack.push(3).unwrap();
     /// assert!(push_res.is_ok());
@@ -105,7 +105,7 @@ pub trait StackImpl<'a> {
     ///
     /// let mut arr: [u8; 4] = [0; 4];
     /// let stack_handle = ArrayHandle::new(arr.as_mut_ptr(), arr.len());
-    /// let mut stack = Stack::new(&stack_handle.ptr, stack_handle.len).unwrap();
+    /// let mut stack = Stack::new(stack_handle.ptr, stack_handle.len).unwrap();
     /// let size = stack.size();
     ///
     /// assert_eq!(size, 3);
@@ -114,8 +114,8 @@ pub trait StackImpl<'a> {
 }
 
 impl<'a> StackImpl<'a> for Stack<'a> {
-    fn new(array: &'a *mut u8, len: usize) -> Result<Self, Error> {
-        let stack_bottom_ptr = *array;
+    fn new(array: *mut u8, len: usize) -> Result<Self, Error> {
+        let stack_bottom_ptr = array;
         let len = len - 1;
 
         let stack_top_ptr: *mut u8 = (stack_bottom_ptr as usize + len) as *mut u8;
@@ -144,8 +144,8 @@ impl<'a> StackImpl<'a> for Stack<'a> {
         }
     }
 
-    fn new_from_array_handle(handle: &'a ArrayHandle<'a, u8>) -> Result<Self, Error> {
-        Stack::new(&handle.ptr, handle.len)
+    fn new_from_array_handle(handle: &ArrayHandle<'a, u8>) -> Result<Self, Error> {
+        Stack::new(handle.ptr, handle.len)
     }
 
     fn pop(&mut self) -> Result<u8, Error> {
@@ -280,7 +280,7 @@ pub mod tests {
             let stack_handle =
                 free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
 
-            let mut stack = Stack::new(&stack_handle.ptr, stack_handle.len).unwrap();
+            let mut stack = Stack::new(stack_handle.ptr, stack_handle.len).unwrap();
 
             let expected_size = stack_handle.len - 1;
             let size = stack.size();
@@ -332,7 +332,7 @@ pub mod tests {
             let stack_handle =
                 free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
 
-            let mut stack = Stack::new(&stack_handle.ptr, stack_handle.len).unwrap();
+            let mut stack = Stack::new(stack_handle.ptr, stack_handle.len).unwrap();
 
             let res = stack.push(5);
             write_test_result(writer, res.is_ok(), "should be able to push value");
@@ -358,7 +358,7 @@ pub mod tests {
             let stack_handle =
                 free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
 
-            let mut stack = Stack::new(&stack_handle.ptr, stack_handle.len).unwrap();
+            let mut stack = Stack::new(stack_handle.ptr, stack_handle.len).unwrap();
 
             let res = stack.pop();
 
@@ -381,7 +381,7 @@ pub mod tests {
             let stack_handle =
                 free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
 
-            let mut stack = Stack::new(&stack_handle.ptr, stack_handle.len).unwrap();
+            let mut stack = Stack::new(stack_handle.ptr, stack_handle.len).unwrap();
 
             for i in 0..stack.size() {
                 let n = (i % 255) as u8;
@@ -422,7 +422,7 @@ pub mod tests {
             let stack_handle =
                 free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
 
-            let mut stack = Stack::new(&stack_handle.ptr, stack_handle.len).unwrap();
+            let mut stack = Stack::new(stack_handle.ptr, stack_handle.len).unwrap();
 
             for i in 0..stack.size() {
                 let n = (i % 256) as u8;
