@@ -42,7 +42,19 @@ pub struct ArrayHandle<'a, T> {
 impl<'a, T> ArrayHandle<'a, T> {
     /// Create a new ArrayHandle from an array pointer and length.
     ///
+    /// ptr points to an array of data of type T
+    /// len is the length of the array, the number of elements of type
+    /// T it can hold.
+    ///
+    /// # Safety
+    ///
+    /// ptr must point to a valid array.  The ptr must be an array of
+    /// length len.  It is the responsibility of the caller to
+    /// allocate and deallocate this array.  The array must live as
+    /// long as the ArrayHandle.
+    ///
     /// # Examples
+    ///
     /// ```
     /// use crate::ArrayHandle;
     ///
