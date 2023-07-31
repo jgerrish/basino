@@ -148,10 +148,10 @@ impl<'a> Queue<'a> {
     ///
     /// assert!(queue_res.is_ok());
     /// ```
-    fn new(queue_array: &'a *mut u8, len: usize) -> Result<Self, Error> {
+    fn new(queue_array: *mut u8, len: usize) -> Result<Self, Error> {
         // Initialize the queue
         // Set the queue start to the beginning of the queue array
-        let queue_start = *queue_array;
+        let queue_start = queue_array;
 
         // Set the queue end to the start plus the length minus one
         // Why minus one?  Not because of the head/tail limitations,
@@ -202,7 +202,7 @@ impl<'a> Queue<'a> {
     /// assert!(queue_res.is_ok());
     /// ```
     fn new_from_array_handle(handle: &'a ArrayHandle<'a, u8>) -> Result<Queue<'a>, Error> {
-        Queue::new(&handle.ptr, handle.len)
+        Queue::new(handle.ptr, handle.len)
     }
 }
 
