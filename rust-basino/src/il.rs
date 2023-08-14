@@ -493,7 +493,7 @@ pub mod tests {
 
             let stack_handle =
                 free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
-            let mut stack = Stack::new_from_array_handle(&stack_handle).unwrap();
+            let mut stack = Stack::new(&stack_handle).unwrap();
 
             let res = Interpreter::new(
                 byte_code_data.as_ptr(),
@@ -535,7 +535,7 @@ pub mod tests {
 
             let stack_handle =
                 free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
-            let mut stack = Stack::new_from_array_handle(&stack_handle).unwrap();
+            let mut stack = Stack::new(&stack_handle).unwrap();
 
             let res = Interpreter::new(
                 byte_code_data.as_ptr(),
@@ -595,7 +595,7 @@ pub mod tests {
 
             let stack_handle =
                 free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
-            let mut stack = Stack::new_from_array_handle(&stack_handle).unwrap();
+            let mut stack = Stack::new(&stack_handle).unwrap();
 
             let mut interpreter = Interpreter::new(
                 byte_code_data.as_ptr(),
@@ -651,7 +651,7 @@ pub mod tests {
 
             let stack_handle =
                 free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
-            let mut stack = Stack::new_from_array_handle(&stack_handle).unwrap();
+            let mut stack = Stack::new(&stack_handle).unwrap();
 
             let mut interpreter = Interpreter::new(
                 byte_code_data.as_ptr(),
@@ -719,7 +719,7 @@ pub mod tests {
 
             let stack_handle =
                 free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
-            let mut stack = Stack::new_from_array_handle(&stack_handle).unwrap();
+            let mut stack = Stack::new(&stack_handle).unwrap();
 
             let mut interpreter = Interpreter::new(
                 byte_code_data.as_ptr(),
@@ -784,7 +784,7 @@ pub mod tests {
 
             let stack_handle =
                 free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
-            let mut stack = Stack::new_from_array_handle(&stack_handle).unwrap();
+            let mut stack = Stack::new(&stack_handle).unwrap();
 
             let mut interpreter = Interpreter::new(
                 byte_code_data.as_ptr(),
@@ -853,7 +853,7 @@ pub mod tests {
 
             let stack_handle =
                 free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
-            let mut stack = Stack::new_from_array_handle(&stack_handle).unwrap();
+            let mut stack = Stack::new(&stack_handle).unwrap();
 
             let mut interpreter = Interpreter::new(
                 byte_code_data.as_ptr(),
@@ -953,7 +953,7 @@ pub mod tests {
 
             let stack_handle =
                 free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
-            let mut stack = Stack::new_from_array_handle(&stack_handle).unwrap();
+            let mut stack = Stack::new(&stack_handle).unwrap();
 
             let mut interpreter = Interpreter::new(
                 byte_code_data.as_ptr(),
@@ -1069,7 +1069,7 @@ pub mod tests {
 
             let stack_handle =
                 free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
-            let mut stack = Stack::new_from_array_handle(&stack_handle).unwrap();
+            let mut stack = Stack::new(&stack_handle).unwrap();
 
             let mut interpreter = Interpreter::new(
                 byte_code_data.as_ptr(),
@@ -1137,7 +1137,7 @@ pub mod tests {
 
             let stack_handle =
                 free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
-            let mut stack = Stack::new_from_array_handle(&stack_handle).unwrap();
+            let mut stack = Stack::new(&stack_handle).unwrap();
 
             let mut interpreter = Interpreter::new(
                 byte_code_data.as_ptr(),
@@ -1202,7 +1202,7 @@ pub mod tests {
 
             let stack_handle =
                 free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
-            let mut stack = Stack::new_from_array_handle(&stack_handle).unwrap();
+            let mut stack = Stack::new(&stack_handle).unwrap();
 
             let mut interpreter = Interpreter::new(
                 byte_code_data.as_ptr(),
