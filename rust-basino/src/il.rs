@@ -456,9 +456,11 @@ pub mod tests {
         il::{ErrorKind, Interpreter, InterpreterState},
         stack::StackImpl,
         tests::write_test_result,
-        Queue, Stack, Usart, BASINO_IL_BYTE_CODE_DATA, BASINO_INPUT_QUEUE_DATA,
-        BASINO_STACK_BUFFER,
+        Queue, Stack, Usart, BASINO_IL_BYTE_CODE_DATA, BASINO_INPUT_QUEUE_DATA_HANDLE,
+        BASINO_STACK_BUFFER_HANDLE,
     };
+
+    use avr_device::interrupt::free;
 
     /// Run all the tests in this module
     pub fn run_tests(writer: &mut Usart) {
@@ -479,107 +481,156 @@ pub mod tests {
     pub fn test_il_init_works(writer: &mut Usart) {
         let byte_code_data: [u8; 1] = [0; 1];
 
-        let basino_input_queue_data_ptr = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut_ptr() };
-        let mut queue = Queue::new(basino_input_queue_data_ptr, unsafe {
-            BASINO_INPUT_QUEUE_DATA.len()
-        })
-        .unwrap();
+        let (queue_handle, stack_handle) = {
+            let queue_handle = free(|cs| unsafe {
+                BASINO_INPUT_QUEUE_DATA_HANDLE
+                    .borrow(cs)
+                    .replace(None)
+                    .unwrap()
+            });
 
-        let mut stack = Stack::new(unsafe { BASINO_STACK_BUFFER.as_mut_ptr() }, unsafe {
-            BASINO_STACK_BUFFER.len()
-        })
-        .unwrap();
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
-        let res = Interpreter::new(
-            byte_code_data.as_ptr(),
-            byte_code_data.len(),
-            &mut queue,
-            &mut stack,
-        );
+            let stack_handle =
+                free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
+            let mut stack = Stack::new_from_array_handle(&stack_handle).unwrap();
 
-        write_test_result(writer, res.is_ok(), "should initialize interpreter");
+            let res = Interpreter::new(
+                byte_code_data.as_ptr(),
+                byte_code_data.len(),
+                &mut queue,
+                &mut stack,
+            );
+
+            write_test_result(writer, res.is_ok(), "should initialize interpreter");
+
+            (queue_handle, stack_handle)
+        };
+
+        free(|cs| unsafe {
+            BASINO_INPUT_QUEUE_DATA_HANDLE
+                .borrow(cs)
+                .replace(Some(queue_handle))
+        });
+        free(|cs| unsafe {
+            BASINO_STACK_BUFFER_HANDLE
+                .borrow(cs)
+                .replace(Some(stack_handle))
+        });
     }
 
     /// Test that initializing with a zero length array fails
     pub fn test_il_init_zero_length_fails(writer: &mut Usart) {
         let byte_code_data: [u8; 0] = [0; 0];
 
-        let basino_input_queue_data_ptr = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut_ptr() };
-        let mut queue = Queue::new(basino_input_queue_data_ptr, unsafe {
-            BASINO_INPUT_QUEUE_DATA.len()
-        })
-        .unwrap();
+        let (queue_handle, stack_handle) = {
+            let queue_handle = free(|cs| unsafe {
+                BASINO_INPUT_QUEUE_DATA_HANDLE
+                    .borrow(cs)
+                    .replace(None)
+                    .unwrap()
+            });
 
-        let mut stack = Stack::new(unsafe { BASINO_STACK_BUFFER.as_mut_ptr() }, unsafe {
-            BASINO_STACK_BUFFER.len()
-        })
-        .unwrap();
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
-        let res = Interpreter::new(
-            byte_code_data.as_ptr(),
-            byte_code_data.len(),
-            &mut queue,
-            &mut stack,
-        );
+            let stack_handle =
+                free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
+            let mut stack = Stack::new_from_array_handle(&stack_handle).unwrap();
 
-        write_test_result(
-            writer,
-            res.is_err(),
-            "init with zero length argument should fail to initialize interpreter",
-        );
-        match res {
-            Ok(_) => {
-                write_test_result(
-                    writer,
-                    false,
-                    "init with zero length argument should return InvalidArguments",
-                );
+            let res = Interpreter::new(
+                byte_code_data.as_ptr(),
+                byte_code_data.len(),
+                &mut queue,
+                &mut stack,
+            );
+
+            write_test_result(
+                writer,
+                res.is_err(),
+                "init with zero length argument should fail to initialize interpreter",
+            );
+            match res {
+                Ok(_) => {
+                    write_test_result(
+                        writer,
+                        false,
+                        "init with zero length argument should return InvalidArguments",
+                    );
+                }
+                Err(e) => {
+                    write_test_result(
+                        writer,
+                        e.kind == ErrorKind::InvalidArguments,
+                        "init with zero length argument should return InvalidArguments",
+                    );
+                }
             }
-            Err(e) => {
-                write_test_result(
-                    writer,
-                    e.kind == ErrorKind::InvalidArguments,
-                    "init with zero length argument should return InvalidArguments",
-                );
-            }
-        }
+            (queue_handle, stack_handle)
+        };
+        free(|cs| unsafe {
+            BASINO_INPUT_QUEUE_DATA_HANDLE
+                .borrow(cs)
+                .replace(Some(queue_handle))
+        });
+        free(|cs| unsafe {
+            BASINO_STACK_BUFFER_HANDLE
+                .borrow(cs)
+                .replace(Some(stack_handle))
+        });
     }
 
     /// Test that executing a single NO instruction works
     pub fn test_il_exec_no_works(writer: &mut Usart) {
         let byte_code_data: [u8; 2] = [0; 2];
 
-        let basino_input_queue_data_ptr = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut_ptr() };
-        let mut queue = Queue::new(basino_input_queue_data_ptr, unsafe {
-            BASINO_INPUT_QUEUE_DATA.len()
-        })
-        .unwrap();
+        let (queue_handle, stack_handle) = {
+            let queue_handle = free(|cs| unsafe {
+                BASINO_INPUT_QUEUE_DATA_HANDLE
+                    .borrow(cs)
+                    .replace(None)
+                    .unwrap()
+            });
 
-        let mut stack = Stack::new(unsafe { BASINO_STACK_BUFFER.as_mut_ptr() }, unsafe {
-            BASINO_STACK_BUFFER.len()
-        })
-        .unwrap();
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
-        let mut interpreter = Interpreter::new(
-            byte_code_data.as_ptr(),
-            byte_code_data.len(),
-            &mut queue,
-            &mut stack,
-        )
-        .unwrap();
+            let stack_handle =
+                free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
+            let mut stack = Stack::new_from_array_handle(&stack_handle).unwrap();
 
-        let byte_code_ptr_old = interpreter.byte_code_ptr as usize;
-        let res = interpreter.exec(0x08);
-        let byte_code_ptr_new = interpreter.byte_code_ptr as usize;
+            let mut interpreter = Interpreter::new(
+                byte_code_data.as_ptr(),
+                byte_code_data.len(),
+                &mut queue,
+                &mut stack,
+            )
+            .unwrap();
 
-        write_test_result(writer, res.is_ok(), "exec should work");
+            let byte_code_ptr_old = interpreter.byte_code_ptr as usize;
+            let res = interpreter.exec(0x08);
+            let byte_code_ptr_new = interpreter.byte_code_ptr as usize;
 
-        // Verify the pointer was not advanced
-        write_test_result(
-            writer,
-            byte_code_ptr_old == byte_code_ptr_new,
-            "NB exec shouldn't advance the byte code pointer",
-        );
+            write_test_result(writer, res.is_ok(), "exec should work");
+
+            // Verify the pointer was not advanced
+            write_test_result(
+                writer,
+                byte_code_ptr_old == byte_code_ptr_new,
+                "NB exec shouldn't advance the byte code pointer",
+            );
+
+            (queue_handle, stack_handle)
+        };
+
+        free(|cs| unsafe {
+            BASINO_INPUT_QUEUE_DATA_HANDLE
+                .borrow(cs)
+                .replace(Some(queue_handle))
+        });
+        free(|cs| unsafe {
+            BASINO_STACK_BUFFER_HANDLE
+                .borrow(cs)
+                .replace(Some(stack_handle))
+        });
     }
 
     /// Test that executing Push Literal Byte onto Stack (LB) works
@@ -588,49 +639,67 @@ pub mod tests {
         byte_code_data[0] = 0x09;
         byte_code_data[1] = 0x76;
 
-        let basino_input_queue_data_ptr = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut_ptr() };
-        let mut queue = Queue::new(basino_input_queue_data_ptr, unsafe {
-            BASINO_INPUT_QUEUE_DATA.len()
-        })
-        .unwrap();
-        let mut stack = Stack::new(unsafe { BASINO_STACK_BUFFER.as_mut_ptr() }, unsafe {
-            BASINO_STACK_BUFFER.len()
-        })
-        .unwrap();
+        let (queue_handle, stack_handle) = {
+            let queue_handle = free(|cs| unsafe {
+                BASINO_INPUT_QUEUE_DATA_HANDLE
+                    .borrow(cs)
+                    .replace(None)
+                    .unwrap()
+            });
 
-        let mut interpreter = Interpreter::new(
-            byte_code_data.as_ptr(),
-            byte_code_data.len(),
-            &mut queue,
-            &mut stack,
-        )
-        .unwrap();
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
-        let byte_code = interpreter.get_next_bytecode().unwrap();
-        let byte_code_ptr_old = interpreter.byte_code_ptr as usize;
-        let res = interpreter.exec(byte_code);
-        let byte_code_ptr_new = interpreter.byte_code_ptr as usize;
-        assert!(res.is_ok());
-        // Test the item item was pushed onto the stack
-        let stack = interpreter.stack;
-        let res = unsafe { (*stack).pop() };
+            let stack_handle =
+                free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
+            let mut stack = Stack::new_from_array_handle(&stack_handle).unwrap();
 
-        write_test_result(writer, res.is_ok(), "LB should pop from stack");
-        match res {
-            Ok(v) => {
-                write_test_result(writer, v == 0x76, "LB popped value should equal 0x76");
+            let mut interpreter = Interpreter::new(
+                byte_code_data.as_ptr(),
+                byte_code_data.len(),
+                &mut queue,
+                &mut stack,
+            )
+            .unwrap();
+
+            let byte_code = interpreter.get_next_bytecode().unwrap();
+            let byte_code_ptr_old = interpreter.byte_code_ptr as usize;
+            let res = interpreter.exec(byte_code);
+            let byte_code_ptr_new = interpreter.byte_code_ptr as usize;
+            assert!(res.is_ok());
+            // Test the item item was pushed onto the stack
+            let stack = interpreter.stack;
+            let res = unsafe { (*stack).pop() };
+
+            write_test_result(writer, res.is_ok(), "LB should pop from stack");
+            match res {
+                Ok(v) => {
+                    write_test_result(writer, v == 0x76, "LB popped value should equal 0x76");
+                }
+                Err(_e) => {
+                    write_test_result(writer, false, "LB popped value should equal 0x76");
+                }
             }
-            Err(_e) => {
-                write_test_result(writer, false, "LB popped value should equal 0x76");
-            }
-        }
 
-        // Verify the pointer was advanced
-        write_test_result(
-            writer,
-            byte_code_ptr_new == byte_code_ptr_old + 1,
-            "LB exec should advance the byte code pointer",
-        );
+            // Verify the pointer was advanced
+            write_test_result(
+                writer,
+                byte_code_ptr_new == byte_code_ptr_old + 1,
+                "LB exec should advance the byte code pointer",
+            );
+
+            (queue_handle, stack_handle)
+        };
+
+        free(|cs| unsafe {
+            BASINO_INPUT_QUEUE_DATA_HANDLE
+                .borrow(cs)
+                .replace(Some(queue_handle))
+        });
+        free(|cs| unsafe {
+            BASINO_STACK_BUFFER_HANDLE
+                .borrow(cs)
+                .replace(Some(stack_handle))
+        });
     }
 
     /// Test that executing while interpreter stops returns the right error code
@@ -638,44 +707,62 @@ pub mod tests {
         let byte_code_data = unsafe { BASINO_IL_BYTE_CODE_DATA.as_mut() };
         byte_code_data[0] = 0x08;
 
-        let basino_input_queue_data_ptr = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut_ptr() };
-        let mut queue = Queue::new(basino_input_queue_data_ptr, unsafe {
-            BASINO_INPUT_QUEUE_DATA.len()
-        })
-        .unwrap();
-        let mut stack = Stack::new(unsafe { BASINO_STACK_BUFFER.as_mut_ptr() }, unsafe {
-            BASINO_STACK_BUFFER.len()
-        })
-        .unwrap();
+        let (queue_handle, stack_handle) = {
+            let queue_handle = free(|cs| unsafe {
+                BASINO_INPUT_QUEUE_DATA_HANDLE
+                    .borrow(cs)
+                    .replace(None)
+                    .unwrap()
+            });
 
-        let mut interpreter = Interpreter::new(
-            byte_code_data.as_ptr(),
-            byte_code_data.len(),
-            &mut queue,
-            &mut stack,
-        )
-        .unwrap();
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
-        interpreter.state = InterpreterState::Stopped;
+            let stack_handle =
+                free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
+            let mut stack = Stack::new_from_array_handle(&stack_handle).unwrap();
 
-        let res = interpreter.exec(0x08);
+            let mut interpreter = Interpreter::new(
+                byte_code_data.as_ptr(),
+                byte_code_data.len(),
+                &mut queue,
+                &mut stack,
+            )
+            .unwrap();
 
-        match res {
-            Ok(_) => {
-                write_test_result(
-                    writer,
-                    false,
-                    "exec while stopped should return ErrorKind::Stopped",
-                );
+            interpreter.state = InterpreterState::Stopped;
+
+            let res = interpreter.exec(0x08);
+
+            match res {
+                Ok(_) => {
+                    write_test_result(
+                        writer,
+                        false,
+                        "exec while stopped should return ErrorKind::Stopped",
+                    );
+                }
+                Err(e) => {
+                    write_test_result(
+                        writer,
+                        e.kind == ErrorKind::Stopped,
+                        "exec while stopped should return ErrorKind::Stopped",
+                    );
+                }
             }
-            Err(e) => {
-                write_test_result(
-                    writer,
-                    e.kind == ErrorKind::Stopped,
-                    "exec while stopped should return ErrorKind::Stopped",
-                );
-            }
-        }
+
+            (queue_handle, stack_handle)
+        };
+
+        free(|cs| unsafe {
+            BASINO_INPUT_QUEUE_DATA_HANDLE
+                .borrow(cs)
+                .replace(Some(queue_handle))
+        });
+        free(|cs| unsafe {
+            BASINO_STACK_BUFFER_HANDLE
+                .borrow(cs)
+                .replace(Some(stack_handle))
+        });
     }
 
     /// Test that getting the next bytecode works
@@ -685,47 +772,65 @@ pub mod tests {
         byte_code_data[1] = 0x09;
         byte_code_data[2] = 0x76;
 
-        let basino_input_queue_data_ptr = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut_ptr() };
-        let mut queue = Queue::new(basino_input_queue_data_ptr, unsafe {
-            BASINO_INPUT_QUEUE_DATA.len()
-        })
-        .unwrap();
-        let mut stack = Stack::new(unsafe { BASINO_STACK_BUFFER.as_mut_ptr() }, unsafe {
-            BASINO_STACK_BUFFER.len()
-        })
-        .unwrap();
+        let (queue_handle, stack_handle) = {
+            let queue_handle = free(|cs| unsafe {
+                BASINO_INPUT_QUEUE_DATA_HANDLE
+                    .borrow(cs)
+                    .replace(None)
+                    .unwrap()
+            });
 
-        let mut interpreter = Interpreter::new(
-            byte_code_data.as_ptr(),
-            byte_code_data.len(),
-            &mut queue,
-            &mut stack,
-        )
-        .unwrap();
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
-        let res = interpreter.get_next_bytecode();
+            let stack_handle =
+                free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
+            let mut stack = Stack::new_from_array_handle(&stack_handle).unwrap();
 
-        write_test_result(writer, res.is_ok(), "should get next bytecode");
-        match res {
-            Ok(bc) => {
-                write_test_result(writer, bc == 0x08, "next bytecode should equal 0x08");
+            let mut interpreter = Interpreter::new(
+                byte_code_data.as_ptr(),
+                byte_code_data.len(),
+                &mut queue,
+                &mut stack,
+            )
+            .unwrap();
+
+            let res = interpreter.get_next_bytecode();
+
+            write_test_result(writer, res.is_ok(), "should get next bytecode");
+            match res {
+                Ok(bc) => {
+                    write_test_result(writer, bc == 0x08, "next bytecode should equal 0x08");
+                }
+                Err(_) => {
+                    write_test_result(writer, false, "next bytecode should equal 0x08");
+                }
             }
-            Err(_) => {
-                write_test_result(writer, false, "next bytecode should equal 0x08");
-            }
-        }
 
-        let res = interpreter.get_next_bytecode();
+            let res = interpreter.get_next_bytecode();
 
-        write_test_result(writer, res.is_ok(), "should get next bytecode");
-        match res {
-            Ok(bc) => {
-                write_test_result(writer, bc == 0x09, "next bytecode should equal 0x09");
+            write_test_result(writer, res.is_ok(), "should get next bytecode");
+            match res {
+                Ok(bc) => {
+                    write_test_result(writer, bc == 0x09, "next bytecode should equal 0x09");
+                }
+                Err(_) => {
+                    write_test_result(writer, false, "next bytecode should equal 0x09");
+                }
             }
-            Err(_) => {
-                write_test_result(writer, false, "next bytecode should equal 0x09");
-            }
-        }
+
+            (queue_handle, stack_handle)
+        };
+
+        free(|cs| unsafe {
+            BASINO_INPUT_QUEUE_DATA_HANDLE
+                .borrow(cs)
+                .replace(Some(queue_handle))
+        });
+        free(|cs| unsafe {
+            BASINO_STACK_BUFFER_HANDLE
+                .borrow(cs)
+                .replace(Some(stack_handle))
+        });
     }
 
     /// Test that getting the next bytecode works.
@@ -736,78 +841,96 @@ pub mod tests {
         byte_code_data[0] = 0x08;
         byte_code_data[1] = 0x08;
 
-        let basino_input_queue_data_ptr = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut_ptr() };
-        let mut queue = Queue::new(basino_input_queue_data_ptr, unsafe {
-            BASINO_INPUT_QUEUE_DATA.len()
-        })
-        .unwrap();
-        let mut stack = Stack::new(unsafe { BASINO_STACK_BUFFER.as_mut_ptr() }, unsafe {
-            BASINO_STACK_BUFFER.len()
-        })
-        .unwrap();
+        let (queue_handle, stack_handle) = {
+            let queue_handle = free(|cs| unsafe {
+                BASINO_INPUT_QUEUE_DATA_HANDLE
+                    .borrow(cs)
+                    .replace(None)
+                    .unwrap()
+            });
 
-        let mut interpreter = Interpreter::new(
-            byte_code_data.as_ptr(),
-            byte_code_data.len(),
-            &mut queue,
-            &mut stack,
-        )
-        .unwrap();
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
-        write_test_result(
-            writer,
-            interpreter.state == InterpreterState::Running,
-            "state should be running",
-        );
+            let stack_handle =
+                free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
+            let mut stack = Stack::new_from_array_handle(&stack_handle).unwrap();
 
-        let res = interpreter.get_next_bytecode();
+            let mut interpreter = Interpreter::new(
+                byte_code_data.as_ptr(),
+                byte_code_data.len(),
+                &mut queue,
+                &mut stack,
+            )
+            .unwrap();
 
-        write_test_result(writer, res.is_ok(), "should get next bytecode");
-        match res {
-            Ok(bc) => {
-                write_test_result(writer, bc == 0x08, "next bytecode should equal 0x08");
+            write_test_result(
+                writer,
+                interpreter.state == InterpreterState::Running,
+                "state should be running",
+            );
+
+            let res = interpreter.get_next_bytecode();
+
+            write_test_result(writer, res.is_ok(), "should get next bytecode");
+            match res {
+                Ok(bc) => {
+                    write_test_result(writer, bc == 0x08, "next bytecode should equal 0x08");
+                }
+                Err(_) => {
+                    write_test_result(writer, false, "next bytecode should equal 0x08");
+                }
             }
-            Err(_) => {
-                write_test_result(writer, false, "next bytecode should equal 0x08");
-            }
-        }
-        write_test_result(
-            writer,
-            interpreter.state == InterpreterState::Running,
-            "state should be running",
-        );
+            write_test_result(
+                writer,
+                interpreter.state == InterpreterState::Running,
+                "state should be running",
+            );
 
-        // The next bytecode should be a zero byte
-        // Since we're not currently executing an instruction, this should fail
-        // with an EndOfProgram error.
-        let res = interpreter.get_next_bytecode();
-        write_test_result(
-            writer,
-            res.is_err(),
-            "get next bytecode should return EndOfProgram",
-        );
-        match res {
-            Ok(_) => {
-                write_test_result(
-                    writer,
-                    false,
-                    "get next bytecode should return EndOfProgram",
-                );
+            // The next bytecode should be a zero byte
+            // Since we're not currently executing an instruction, this should fail
+            // with an EndOfProgram error.
+            let res = interpreter.get_next_bytecode();
+            write_test_result(
+                writer,
+                res.is_err(),
+                "get next bytecode should return EndOfProgram",
+            );
+            match res {
+                Ok(_) => {
+                    write_test_result(
+                        writer,
+                        false,
+                        "get next bytecode should return EndOfProgram",
+                    );
+                }
+                Err(e) => {
+                    write_test_result(
+                        writer,
+                        e.kind == ErrorKind::EndOfProgram,
+                        "get next bytecode should return EndOfProgram",
+                    );
+                }
             }
-            Err(e) => {
-                write_test_result(
-                    writer,
-                    e.kind == ErrorKind::EndOfProgram,
-                    "get next bytecode should return EndOfProgram",
-                );
-            }
-        }
 
-        write_test_result(
-            writer,
-            interpreter.state == InterpreterState::Stopped,
-            "state should be stopped",
-        );
+            write_test_result(
+                writer,
+                interpreter.state == InterpreterState::Stopped,
+                "state should be stopped",
+            );
+
+            (queue_handle, stack_handle)
+        };
+
+        free(|cs| unsafe {
+            BASINO_INPUT_QUEUE_DATA_HANDLE
+                .borrow(cs)
+                .replace(Some(queue_handle))
+        });
+        free(|cs| unsafe {
+            BASINO_STACK_BUFFER_HANDLE
+                .borrow(cs)
+                .replace(Some(stack_handle))
+        });
     }
 
     /// Test that getting the next bytecode works.
@@ -818,94 +941,112 @@ pub mod tests {
         byte_code_data[0] = 0x08;
         byte_code_data[1] = 0x08;
 
-        let basino_input_queue_data_ptr = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut_ptr() };
-        let mut queue = Queue::new(basino_input_queue_data_ptr, unsafe {
-            BASINO_INPUT_QUEUE_DATA.len()
-        })
-        .unwrap();
-        let mut stack = Stack::new(unsafe { BASINO_STACK_BUFFER.as_mut_ptr() }, unsafe {
-            BASINO_STACK_BUFFER.len()
-        })
-        .unwrap();
+        let (queue_handle, stack_handle) = {
+            let queue_handle = free(|cs| unsafe {
+                BASINO_INPUT_QUEUE_DATA_HANDLE
+                    .borrow(cs)
+                    .replace(None)
+                    .unwrap()
+            });
 
-        let mut interpreter = Interpreter::new(
-            byte_code_data.as_ptr(),
-            byte_code_data.len(),
-            &mut queue,
-            &mut stack,
-        )
-        .unwrap();
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
-        write_test_result(
-            writer,
-            interpreter.state == InterpreterState::Running,
-            "state should be running",
-        );
+            let stack_handle =
+                free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
+            let mut stack = Stack::new_from_array_handle(&stack_handle).unwrap();
 
-        let res = interpreter.get_next_bytecode();
+            let mut interpreter = Interpreter::new(
+                byte_code_data.as_ptr(),
+                byte_code_data.len(),
+                &mut queue,
+                &mut stack,
+            )
+            .unwrap();
 
-        write_test_result(writer, res.is_ok(), "should get next bytecode");
-        match res {
-            Ok(bc) => {
-                write_test_result(writer, bc == 0x08, "next bytecode should equal 0x08");
-            }
-            Err(_) => {
-                write_test_result(writer, false, "next bytecode should equal 0x08");
-            }
-        }
-        write_test_result(
-            writer,
-            interpreter.state == InterpreterState::Running,
-            "state should be running",
-        );
+            write_test_result(
+                writer,
+                interpreter.state == InterpreterState::Running,
+                "state should be running",
+            );
 
-        // The next bytecode should be another NOP (0x08)
-        // This should work.
-        let res = interpreter.get_next_bytecode();
-        write_test_result(writer, res.is_ok(), "get next bytecode should return Ok");
-        match res {
-            Ok(_) => {
-                write_test_result(writer, true, "get next bytecode should return Ok");
-            }
-            Err(_) => {
-                write_test_result(writer, false, "get next bytecode should return Ok");
-            }
-        }
-        write_test_result(
-            writer,
-            interpreter.state == InterpreterState::Running,
-            "state should be running",
-        );
+            let res = interpreter.get_next_bytecode();
 
-        // The pointer should be at the end of the array
-        // This should fail.
-        let res = interpreter.get_next_bytecode();
-        write_test_result(
-            writer,
-            res.is_err(),
-            "get next bytecode should return EndOfProgram",
-        );
-        match res {
-            Ok(_) => {
-                write_test_result(
-                    writer,
-                    false,
-                    "get next bytecode should return EndOfProgram",
-                );
+            write_test_result(writer, res.is_ok(), "should get next bytecode");
+            match res {
+                Ok(bc) => {
+                    write_test_result(writer, bc == 0x08, "next bytecode should equal 0x08");
+                }
+                Err(_) => {
+                    write_test_result(writer, false, "next bytecode should equal 0x08");
+                }
             }
-            Err(e) => {
-                write_test_result(
-                    writer,
-                    e.kind == ErrorKind::EndOfProgram,
-                    "get next bytecode should return EndOfProgram",
-                );
+            write_test_result(
+                writer,
+                interpreter.state == InterpreterState::Running,
+                "state should be running",
+            );
+
+            // The next bytecode should be another NOP (0x08)
+            // This should work.
+            let res = interpreter.get_next_bytecode();
+            write_test_result(writer, res.is_ok(), "get next bytecode should return Ok");
+            match res {
+                Ok(_) => {
+                    write_test_result(writer, true, "get next bytecode should return Ok");
+                }
+                Err(_) => {
+                    write_test_result(writer, false, "get next bytecode should return Ok");
+                }
             }
-        }
-        write_test_result(
-            writer,
-            interpreter.state == InterpreterState::Stopped,
-            "state should be stopped",
-        );
+            write_test_result(
+                writer,
+                interpreter.state == InterpreterState::Running,
+                "state should be running",
+            );
+
+            // The pointer should be at the end of the array
+            // This should fail.
+            let res = interpreter.get_next_bytecode();
+            write_test_result(
+                writer,
+                res.is_err(),
+                "get next bytecode should return EndOfProgram",
+            );
+            match res {
+                Ok(_) => {
+                    write_test_result(
+                        writer,
+                        false,
+                        "get next bytecode should return EndOfProgram",
+                    );
+                }
+                Err(e) => {
+                    write_test_result(
+                        writer,
+                        e.kind == ErrorKind::EndOfProgram,
+                        "get next bytecode should return EndOfProgram",
+                    );
+                }
+            }
+            write_test_result(
+                writer,
+                interpreter.state == InterpreterState::Stopped,
+                "state should be stopped",
+            );
+
+            (queue_handle, stack_handle)
+        };
+
+        free(|cs| unsafe {
+            BASINO_INPUT_QUEUE_DATA_HANDLE
+                .borrow(cs)
+                .replace(Some(queue_handle))
+        });
+        free(|cs| unsafe {
+            BASINO_STACK_BUFFER_HANDLE
+                .borrow(cs)
+                .replace(Some(stack_handle))
+        });
     }
 
     /// Test that running a short simple program works
@@ -916,46 +1057,64 @@ pub mod tests {
         byte_code_data[2] = 0x76;
         byte_code_data[3] = 0x00;
 
-        let basino_input_queue_data_ptr = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut_ptr() };
-        let mut queue = Queue::new(basino_input_queue_data_ptr, unsafe {
-            BASINO_INPUT_QUEUE_DATA.len()
-        })
-        .unwrap();
-        let mut stack = Stack::new(unsafe { BASINO_STACK_BUFFER.as_mut_ptr() }, unsafe {
-            BASINO_STACK_BUFFER.len()
-        })
-        .unwrap();
+        let (queue_handle, stack_handle) = {
+            let queue_handle = free(|cs| unsafe {
+                BASINO_INPUT_QUEUE_DATA_HANDLE
+                    .borrow(cs)
+                    .replace(None)
+                    .unwrap()
+            });
 
-        let mut interpreter = Interpreter::new(
-            byte_code_data.as_ptr(),
-            byte_code_data.len(),
-            &mut queue,
-            &mut stack,
-        )
-        .unwrap();
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
-        let res = interpreter.run();
+            let stack_handle =
+                free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
+            let mut stack = Stack::new_from_array_handle(&stack_handle).unwrap();
 
-        write_test_result(writer, res.is_ok(), "should run program");
+            let mut interpreter = Interpreter::new(
+                byte_code_data.as_ptr(),
+                byte_code_data.len(),
+                &mut queue,
+                &mut stack,
+            )
+            .unwrap();
 
-        // Test the item was pushed onto the stack
-        let stack = interpreter.stack;
-        let res = unsafe { (*stack).pop() };
+            let res = interpreter.run();
 
-        write_test_result(writer, res.is_ok(), "LB should pop from stack");
-        match res {
-            Ok(v) => {
-                write_test_result(writer, v == 0x76, "LB popped value should equal 0x76");
+            write_test_result(writer, res.is_ok(), "should run program");
+
+            // Test the item was pushed onto the stack
+            let stack = interpreter.stack;
+            let res = unsafe { (*stack).pop() };
+
+            write_test_result(writer, res.is_ok(), "LB should pop from stack");
+            match res {
+                Ok(v) => {
+                    write_test_result(writer, v == 0x76, "LB popped value should equal 0x76");
+                }
+                Err(_) => {
+                    write_test_result(writer, false, "LB popped value should equal 0x76");
+                }
             }
-            Err(_) => {
-                write_test_result(writer, false, "LB popped value should equal 0x76");
-            }
-        }
-        write_test_result(
-            writer,
-            interpreter.state == InterpreterState::Stopped,
-            "successful run should end with a state of stopped",
-        );
+            write_test_result(
+                writer,
+                interpreter.state == InterpreterState::Stopped,
+                "successful run should end with a state of stopped",
+            );
+
+            (queue_handle, stack_handle)
+        };
+
+        free(|cs| unsafe {
+            BASINO_INPUT_QUEUE_DATA_HANDLE
+                .borrow(cs)
+                .replace(Some(queue_handle))
+        });
+        free(|cs| unsafe {
+            BASINO_STACK_BUFFER_HANDLE
+                .borrow(cs)
+                .replace(Some(stack_handle))
+        });
     }
 
     /// Test that running while stopped fails
@@ -966,44 +1125,62 @@ pub mod tests {
         byte_code_data[2] = 0x76;
         byte_code_data[3] = 0x00;
 
-        let basino_input_queue_data_ptr = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut_ptr() };
-        let mut queue = Queue::new(basino_input_queue_data_ptr, unsafe {
-            BASINO_INPUT_QUEUE_DATA.len()
-        })
-        .unwrap();
-        let mut stack = Stack::new(unsafe { BASINO_STACK_BUFFER.as_mut_ptr() }, unsafe {
-            BASINO_STACK_BUFFER.len()
-        })
-        .unwrap();
+        let (queue_handle, stack_handle) = {
+            let queue_handle = free(|cs| unsafe {
+                BASINO_INPUT_QUEUE_DATA_HANDLE
+                    .borrow(cs)
+                    .replace(None)
+                    .unwrap()
+            });
 
-        let mut interpreter = Interpreter::new(
-            byte_code_data.as_ptr(),
-            byte_code_data.len(),
-            &mut queue,
-            &mut stack,
-        )
-        .unwrap();
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
-        interpreter.run().unwrap();
-        let res = interpreter.run();
+            let stack_handle =
+                free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
+            let mut stack = Stack::new_from_array_handle(&stack_handle).unwrap();
 
-        match res {
-            Ok(_) => {
-                write_test_result(writer, false, "second run should fail");
+            let mut interpreter = Interpreter::new(
+                byte_code_data.as_ptr(),
+                byte_code_data.len(),
+                &mut queue,
+                &mut stack,
+            )
+            .unwrap();
+
+            interpreter.run().unwrap();
+            let res = interpreter.run();
+
+            match res {
+                Ok(_) => {
+                    write_test_result(writer, false, "second run should fail");
+                }
+                Err(e) => {
+                    write_test_result(
+                        writer,
+                        e.kind == ErrorKind::Stopped,
+                        "second run should return Stopped",
+                    );
+                }
             }
-            Err(e) => {
-                write_test_result(
-                    writer,
-                    e.kind == ErrorKind::Stopped,
-                    "second run should return Stopped",
-                );
-            }
-        }
-        write_test_result(
-            writer,
-            interpreter.state == InterpreterState::Stopped,
-            "successful run should end with a state of stopped",
-        );
+            write_test_result(
+                writer,
+                interpreter.state == InterpreterState::Stopped,
+                "successful run should end with a state of stopped",
+            );
+
+            (queue_handle, stack_handle)
+        };
+
+        free(|cs| unsafe {
+            BASINO_INPUT_QUEUE_DATA_HANDLE
+                .borrow(cs)
+                .replace(Some(queue_handle))
+        });
+        free(|cs| unsafe {
+            BASINO_STACK_BUFFER_HANDLE
+                .borrow(cs)
+                .replace(Some(stack_handle))
+        });
     }
 
     /// Test that running a program without an end-of-program marker works
@@ -1013,45 +1190,63 @@ pub mod tests {
         byte_code_data[1] = 0x09;
         byte_code_data[2] = 0x76;
 
-        let basino_input_queue_data_ptr = unsafe { BASINO_INPUT_QUEUE_DATA.as_mut_ptr() };
-        let mut queue = Queue::new(basino_input_queue_data_ptr, unsafe {
-            BASINO_INPUT_QUEUE_DATA.len()
-        })
-        .unwrap();
-        let mut stack = Stack::new(unsafe { BASINO_STACK_BUFFER.as_mut_ptr() }, unsafe {
-            BASINO_STACK_BUFFER.len()
-        })
-        .unwrap();
+        let (queue_handle, stack_handle) = {
+            let queue_handle = free(|cs| unsafe {
+                BASINO_INPUT_QUEUE_DATA_HANDLE
+                    .borrow(cs)
+                    .replace(None)
+                    .unwrap()
+            });
 
-        let mut interpreter = Interpreter::new(
-            byte_code_data.as_ptr(),
-            byte_code_data.len(),
-            &mut queue,
-            &mut stack,
-        )
-        .unwrap();
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
-        let res = interpreter.run();
+            let stack_handle =
+                free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
+            let mut stack = Stack::new_from_array_handle(&stack_handle).unwrap();
 
-        write_test_result(writer, res.is_ok(), "should run program");
+            let mut interpreter = Interpreter::new(
+                byte_code_data.as_ptr(),
+                byte_code_data.len(),
+                &mut queue,
+                &mut stack,
+            )
+            .unwrap();
 
-        // Test the item was pushed onto the stack
-        let stack = interpreter.stack;
-        let res = unsafe { (*stack).pop() };
+            let res = interpreter.run();
 
-        write_test_result(writer, res.is_ok(), "LB should pop from stack");
-        match res {
-            Ok(v) => {
-                write_test_result(writer, v == 0x76, "LB popped value should equal 0x76");
+            write_test_result(writer, res.is_ok(), "should run program");
+
+            // Test the item was pushed onto the stack
+            let stack = interpreter.stack;
+            let res = unsafe { (*stack).pop() };
+
+            write_test_result(writer, res.is_ok(), "LB should pop from stack");
+            match res {
+                Ok(v) => {
+                    write_test_result(writer, v == 0x76, "LB popped value should equal 0x76");
+                }
+                Err(_) => {
+                    write_test_result(writer, false, "LB popped value should equal 0x76");
+                }
             }
-            Err(_) => {
-                write_test_result(writer, false, "LB popped value should equal 0x76");
-            }
-        }
-        write_test_result(
-            writer,
-            interpreter.state == InterpreterState::Stopped,
-            "run without explicit end-of-program should end with a state of stopped",
-        );
+            write_test_result(
+                writer,
+                interpreter.state == InterpreterState::Stopped,
+                "run without explicit end-of-program should end with a state of stopped",
+            );
+
+            (queue_handle, stack_handle)
+        };
+
+        free(|cs| unsafe {
+            BASINO_INPUT_QUEUE_DATA_HANDLE
+                .borrow(cs)
+                .replace(Some(queue_handle))
+        });
+        free(|cs| unsafe {
+            BASINO_STACK_BUFFER_HANDLE
+                .borrow(cs)
+                .replace(Some(stack_handle))
+        });
     }
 }

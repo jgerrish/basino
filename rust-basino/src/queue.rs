@@ -4,7 +4,7 @@
 use crate::{
     basino_queue_get, basino_queue_get_head, basino_queue_get_last_head,
     basino_queue_get_queue_end, basino_queue_get_queue_start, basino_queue_get_tail,
-    basino_queue_init, basino_queue_put, Queue, QueueObj,
+    basino_queue_init, basino_queue_put, ArrayHandle, Queue, QueueObj,
 };
 
 use core::{
@@ -86,9 +86,37 @@ impl Display for Error {
 /// Basic functions for a queue
 pub trait QueueImpl {
     /// Put or enqueue a value in the queue
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crate::{ArrayHandle, queue::{Queue, QueueImpl}};
+    ///
+    /// let mut arr: [u8; 4] = [0; 4];
+    /// let queue_handle = ArrayHandle::new(arr.as_mut_ptr(), arr.len());
+    /// let mut queue = Queue::new_from_array_handle(&queue_handle).unwrap();
+    ///
+    /// let put_res = queue.put(3);
+    /// assert!(put_res.is_ok());
+    /// ```
     fn put(&mut self, value: u8) -> Result<(), Error>;
 
     /// Get or dequeue a value from the queue
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crate::{ArrayHandle, queue::{Queue, QueueImpl}};
+    ///
+    /// let mut arr: [u8; 4] = [0; 4];
+    /// let queue_handle = ArrayHandle::new(arr.as_mut_ptr(), arr.len());
+    /// let mut queue = Queue::new_from_array_handle(&queue_handle).unwrap();
+    ///
+    /// queue.put(3).unwrap();
+    /// let get_res = queue.get();
+    /// assert!(get_res.is_ok());
+    /// assert_eq!(get_res.expect("Should get a value"), 3);
+    /// ```
     fn get(&mut self) -> Result<u8, Error>;
 
     // Debugging functions
@@ -107,9 +135,24 @@ pub trait QueueImpl {
 }
 
 impl<'a> Queue<'a> {
-    /// Create a new Queue structure
-    pub fn new(queue_array: *mut u8, len: usize) -> Result<Self, Error> {
+    /// Create a new queue from an array handle
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crate::{ArrayHandle, queue::{Queue, QueueImpl}};
+    ///
+    /// let mut arr: [u8; 4] = [0; 4];
+    /// let queue_handle = ArrayHandle::new(arr.as_mut_ptr(), arr.len());
+    /// let queue_res = Queue::new(&queue_handle);
+    ///
+    /// assert!(queue_res.is_ok());
+    /// ```
+    pub fn new(handle: &'a ArrayHandle<'a, u8>) -> Result<Queue<'a>, Error> {
         // Initialize the queue
+        let queue_array = handle.ptr;
+        let len = handle.len;
+
         // Set the queue start to the beginning of the queue array
         let queue_start = queue_array;
 
@@ -270,7 +313,7 @@ pub mod tests {
             basino_queue_init, basino_queue_put, ErrorKind, Queue, QueueImpl, QueueObj,
         },
         tests::write_test_result,
-        BASINO_QUEUE_DATA,
+        BASINO_QUEUE_DATA_HANDLE,
     };
 
     use arduino_hal::{
@@ -282,6 +325,8 @@ pub mod tests {
         },
         Usart,
     };
+
+    use avr_device::interrupt::free;
 
     /// Run all the tests in this module
     pub fn run_tests(writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) {
@@ -312,45 +357,65 @@ pub mod tests {
 
     /// Test that initializing the queue works
     pub fn test_queue_init_works(writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) {
-        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
-        let res = Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() });
+        let handle = {
+            let queue_handle =
+                free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
-        write_test_result(writer, res.is_ok(), "should initialize queue");
+            let res = Queue::new(&queue_handle);
+
+            write_test_result(writer, res.is_ok(), "should initialize queue");
+
+            queue_handle
+        };
+
+        free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(Some(handle)) });
     }
 
     /// Test that getting from an empty queue fails
     pub fn test_queue_empty_get_fails(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
-        let mut queue =
-            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
+        let handle = {
+            let queue_handle =
+                free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
-        let res = queue.get();
-        write_test_result(writer, res.is_err(), "get from empty queue should fail");
+            let mut queue = Queue::new(&queue_handle).unwrap();
+
+            let res = queue.get();
+            write_test_result(writer, res.is_err(), "get from empty queue should fail");
+            queue_handle
+        };
+
+        free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(Some(handle)) });
     }
 
     /// Test that putting an item into the queue works
     pub fn test_queue_put_works(writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) {
-        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
-        let mut queue =
-            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
+        let handle = {
+            let queue_handle =
+                free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
-        let res = queue.put(5);
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
-        write_test_result(writer, res.is_ok(), "should put 5 into queue");
+            let res = queue.put(5);
 
-        let res = queue.get();
+            write_test_result(writer, res.is_ok(), "should put 5 into queue");
 
-        match res {
-            Ok(v) => {
-                write_test_result(writer, true, "get should be ok");
-                write_test_result(writer, v == 5, "get should return 5");
+            let res = queue.get();
+
+            match res {
+                Ok(v) => {
+                    write_test_result(writer, true, "get should be ok");
+                    write_test_result(writer, v == 5, "get should return 5");
+                }
+                Err(_e) => {
+                    write_test_result(writer, false, "get should be ok and return 5");
+                }
             }
-            Err(_e) => {
-                write_test_result(writer, false, "get should be ok and return 5");
-            }
-        }
+            queue_handle
+        };
+
+        free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(Some(handle)) });
     }
 
     /// Test that putting two items and getting two items from the queue works
@@ -358,92 +423,110 @@ pub mod tests {
     pub fn test_queue_put_twice_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
-        let mut queue =
-            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
+        let handle = {
+            let queue_handle =
+                free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
-        // First, put both items
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
-        let res = queue.put(5);
+            // First, put both items
 
-        write_test_result(writer, res.is_ok(), "should put 5 into queue");
-        let res = queue.put(3);
+            let res = queue.put(5);
 
-        write_test_result(writer, res.is_ok(), "should put 3 into queue");
+            write_test_result(writer, res.is_ok(), "should put 5 into queue");
+            let res = queue.put(3);
 
-        // Now get both items
+            write_test_result(writer, res.is_ok(), "should put 3 into queue");
 
-        let res = queue.get();
+            // Now get both items
 
-        match res {
-            Ok(v) => {
-                write_test_result(writer, v == 5, "get should return 5");
+            let res = queue.get();
+
+            match res {
+                Ok(v) => {
+                    write_test_result(writer, v == 5, "get should return 5");
+                }
+                Err(_e) => {
+                    write_test_result(writer, false, "get should be ok and return 5");
+                }
             }
-            Err(_e) => {
-                write_test_result(writer, false, "get should be ok and return 5");
-            }
-        }
-        let res = queue.get();
+            let res = queue.get();
 
-        match res {
-            Ok(v) => {
-                write_test_result(writer, v == 3, "get should return 3");
+            match res {
+                Ok(v) => {
+                    write_test_result(writer, v == 3, "get should return 3");
+                }
+                Err(_e) => {
+                    write_test_result(writer, false, "get should be ok and return 3");
+                }
             }
-            Err(_e) => {
-                write_test_result(writer, false, "get should be ok and return 3");
-            }
-        }
+            queue_handle
+        };
+
+        free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(Some(handle)) });
     }
 
     /// Test that filling the queue works
     pub fn test_queue_put_fill_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
-        let mut queue =
-            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
+        let handle = {
+            let queue_handle =
+                free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
-        for i in 1..queue.queue_len {
-            let res = queue.put((i % 256) as u8);
-            write_test_result(writer, res.is_ok(), "should be able to fill queue");
-        }
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
-        let res = queue.put(130_u8);
-        write_test_result(writer, res.is_err(), "last put to full queue should fail");
-        match res {
-            Err(e) => {
-                write_test_result(
-                    writer,
-                    e.kind == ErrorKind::QueueFull,
-                    "last put should fail with QueueFull error",
-                );
+            for i in 1..queue.queue_len {
+                let res = queue.put((i % 256) as u8);
+                write_test_result(writer, res.is_ok(), "should be able to fill queue");
             }
-            _ => {
-                write_test_result(writer, false, "last put should fail with QueueFull error");
+
+            let res = queue.put(130_u8);
+            write_test_result(writer, res.is_err(), "last put to full queue should fail");
+            match res {
+                Err(e) => {
+                    write_test_result(
+                        writer,
+                        e.kind == ErrorKind::QueueFull,
+                        "last put should fail with QueueFull error",
+                    );
+                }
+                _ => {
+                    write_test_result(writer, false, "last put should fail with QueueFull error");
+                }
             }
-        }
+            queue_handle
+        };
+
+        free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(Some(handle)) });
     }
 
     /// Test that filling the queue and getting all the values works
     pub fn test_queue_put_and_get_fill_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
-        let mut queue =
-            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
+        let handle = {
+            let queue_handle =
+                free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
-        for i in 1..queue.queue_len {
-            let _res = queue.put((i % 256) as u8);
-        }
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
-        for i in 1..queue.queue_len {
-            let res = queue.get();
-            write_test_result(
-                writer,
-                res.unwrap() == ((i % 256) as u8),
-                "should get filled value",
-            );
-        }
+            for i in 1..queue.queue_len {
+                let _res = queue.put((i % 256) as u8);
+            }
+
+            for i in 1..queue.queue_len {
+                let res = queue.get();
+                write_test_result(
+                    writer,
+                    res.unwrap() == ((i % 256) as u8),
+                    "should get filled value",
+                );
+            }
+            queue_handle
+        };
+
+        free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(Some(handle)) });
     }
 
     /// Test that putting a value, getting it, and then filling the queue works
@@ -451,68 +534,80 @@ pub mod tests {
     pub fn test_queue_put_get_put_fill_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
-        let mut queue =
-            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
+        let handle = {
+            let queue_handle =
+                free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
-        let res = queue.put(0x23_u8);
-        write_test_result(writer, res.is_ok(), "single put of 0x23 should work");
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
-        let res = queue.get();
-        write_test_result(writer, res.is_ok(), "single get should work");
-        write_test_result(writer, res.unwrap() == 0x23, "single get should equal 0x23");
+            let res = queue.put(0x23_u8);
+            write_test_result(writer, res.is_ok(), "single put of 0x23 should work");
 
-        for i in 1..queue.queue_len {
-            let res = queue.put((i % 256) as u8);
-            write_test_result(writer, res.is_ok(), "should be able to fill queue");
-        }
+            let res = queue.get();
+            write_test_result(writer, res.is_ok(), "single get should work");
+            write_test_result(writer, res.unwrap() == 0x23, "single get should equal 0x23");
 
-        let res = queue.put(130_u8);
-        write_test_result(writer, res.is_err(), "last put to full queue should fail");
+            for i in 1..queue.queue_len {
+                let res = queue.put((i % 256) as u8);
+                write_test_result(writer, res.is_ok(), "should be able to fill queue");
+            }
+
+            let res = queue.put(130_u8);
+            write_test_result(writer, res.is_err(), "last put to full queue should fail");
+            queue_handle
+        };
+
+        free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(Some(handle)) });
     }
 
     /// Test a case where the head wraps around
     pub fn test_queue_head_wraps_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
-        let mut queue =
-            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
+        let handle = {
+            let queue_handle =
+                free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
-        // ufmt::uwriteln!(writer, "array: {:?}", unsafe { BASINO_QUEUE_DATA }).unwrap();
-        // for i in 1..queue.queue_len goes from 1 to (queue.queue_len - 1) inclusive
-        // So, if queue.queue_len is 4, this iterates through [1, 2, 3]
-        for i in 1..queue.queue_len {
-            let res = queue.put((i % 256) as u8);
-            write_test_result(writer, res.is_ok(), "should be able to fill queue");
-        }
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
-        for i in 1..queue.queue_len {
-            let res = queue.get();
-            write_test_result(
-                writer,
-                res.unwrap() == ((i % 256) as u8),
-                "should be able to get filled values ",
-            );
-        }
+            // ufmt::uwriteln!(writer, "array: {:?}", unsafe { BASINO_QUEUE_DATA }).unwrap();
+            // for i in 1..queue.queue_len goes from 1 to (queue.queue_len - 1) inclusive
+            // So, if queue.queue_len is 4, this iterates through [1, 2, 3]
+            for i in 1..queue.queue_len {
+                let res = queue.put((i % 256) as u8);
+                write_test_result(writer, res.is_ok(), "should be able to fill queue");
+            }
 
-        for i in 1..=2 {
-            let res = queue.put(i as u8);
-            write_test_result(
-                writer,
-                res.is_ok(),
-                "should be able to put in 2 more values",
-            );
-        }
+            for i in 1..queue.queue_len {
+                let res = queue.get();
+                write_test_result(
+                    writer,
+                    res.unwrap() == ((i % 256) as u8),
+                    "should be able to get filled values ",
+                );
+            }
 
-        for i in 1..=2 {
-            let res = queue.get();
-            write_test_result(
-                writer,
-                res.unwrap() == (i as u8),
-                "should be able to get values",
-            );
-        }
+            for i in 1..=2 {
+                let res = queue.put(i as u8);
+                write_test_result(
+                    writer,
+                    res.is_ok(),
+                    "should be able to put in 2 more values",
+                );
+            }
+
+            for i in 1..=2 {
+                let res = queue.get();
+                write_test_result(
+                    writer,
+                    res.unwrap() == (i as u8),
+                    "should be able to get values",
+                );
+            }
+            queue_handle
+        };
+
+        free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(Some(handle)) });
     }
 
     /// Test a case where the head wraps around
@@ -521,47 +616,53 @@ pub mod tests {
     pub fn test_queue_head_wraps_nonfilled_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
-        let mut queue =
-            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
+        let handle = {
+            let queue_handle =
+                free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
-        // for i in 1..queue.queue_len goes from 1 to (queue.queue_len - 1) inclusive
-        // So, if queue.queue_len is 4, this iterates through [1, 2, 3]
-        for i in 1..=2 {
-            let res = queue.put((i % 256) as u8);
-            write_test_result(writer, res.is_ok(), "should be able to fill queue");
-        }
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
-        for i in 1..=2 {
+            // for i in 1..queue.queue_len goes from 1 to (queue.queue_len - 1) inclusive
+            // So, if queue.queue_len is 4, this iterates through [1, 2, 3]
+            for i in 1..=2 {
+                let res = queue.put((i % 256) as u8);
+                write_test_result(writer, res.is_ok(), "should be able to fill queue");
+            }
+
+            for i in 1..=2 {
+                let res = queue.get();
+                write_test_result(
+                    writer,
+                    res.unwrap() == ((i % 256) as u8),
+                    "should be able to get filled values ",
+                );
+            }
+
+            for i in 1..=2 {
+                let res = queue.put(i as u8);
+                write_test_result(
+                    writer,
+                    res.is_ok(),
+                    "should be able to put in 2 more values",
+                );
+            }
+
+            for i in 1..=2 {
+                let res = queue.get();
+                write_test_result(
+                    writer,
+                    res.unwrap() == (i as u8),
+                    "should be able to get values",
+                );
+            }
+
+            // The queue should now be empty
             let res = queue.get();
-            write_test_result(
-                writer,
-                res.unwrap() == ((i % 256) as u8),
-                "should be able to get filled values ",
-            );
-        }
+            write_test_result(writer, res.is_err(), "get from empty queue should fail");
+            queue_handle
+        };
 
-        for i in 1..=2 {
-            let res = queue.put(i as u8);
-            write_test_result(
-                writer,
-                res.is_ok(),
-                "should be able to put in 2 more values",
-            );
-        }
-
-        for i in 1..=2 {
-            let res = queue.get();
-            write_test_result(
-                writer,
-                res.unwrap() == (i as u8),
-                "should be able to get values",
-            );
-        }
-
-        // The queue should now be empty
-        let res = queue.get();
-        write_test_result(writer, res.is_err(), "get from empty queue should fail");
+        free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(Some(handle)) });
     }
 
     /// Test where we wrap the tail and head with gets in between filling the queue
@@ -569,47 +670,53 @@ pub mod tests {
     pub fn test_queue_head_wraps_nonemptied_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
-        let mut queue =
-            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
+        let handle = {
+            let queue_handle =
+                free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
-        // put in two items [1, 2]
-        for i in [1, 2] {
-            let res = queue.put((i % 256) as u8);
-            write_test_result(writer, res.is_ok(), "should be able to put in two items");
-        }
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
-        // Remove one item
-        let res = queue.get();
-        write_test_result(
-            writer,
-            res.unwrap() == 1_u8,
-            "should be able to get one item ",
-        );
+            // put in two items [1, 2]
+            for i in [1, 2] {
+                let res = queue.put((i % 256) as u8);
+                write_test_result(writer, res.is_ok(), "should be able to put in two items");
+            }
 
-        // Put in two items, [3, 4]
-        for i in [3, 4] {
-            let res = queue.put(i as u8);
-            write_test_result(
-                writer,
-                res.is_ok(),
-                "should be able to put in 2 more values",
-            );
-        }
-
-        // Get three items
-        for i in [2, 3, 4] {
+            // Remove one item
             let res = queue.get();
             write_test_result(
                 writer,
-                res.unwrap() == (i as u8),
-                "should be able to get all values",
+                res.unwrap() == 1_u8,
+                "should be able to get one item ",
             );
-        }
 
-        // The queue should now be empty
-        let res = queue.get();
-        write_test_result(writer, res.is_err(), "get from empty queue should fail");
+            // Put in two items, [3, 4]
+            for i in [3, 4] {
+                let res = queue.put(i as u8);
+                write_test_result(
+                    writer,
+                    res.is_ok(),
+                    "should be able to put in 2 more values",
+                );
+            }
+
+            // Get three items
+            for i in [2, 3, 4] {
+                let res = queue.get();
+                write_test_result(
+                    writer,
+                    res.unwrap() == (i as u8),
+                    "should be able to get all values",
+                );
+            }
+
+            // The queue should now be empty
+            let res = queue.get();
+            write_test_result(writer, res.is_err(), "get from empty queue should fail");
+            queue_handle
+        };
+
+        free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(Some(handle)) });
     }
 
     /// Test a case where the last head wasn't being updated in the
@@ -617,75 +724,88 @@ pub mod tests {
     pub fn test_queue_last_head_update(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
-        let mut queue =
-            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
+        let handle = {
+            let queue_handle =
+                free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
-        // for i in 1..queue.queue_len goes from 1 to (queue.queue_len - 1) inclusive
-        // So, if queue.queue_len is 4, this iterates through [1, 2, 3]
-        for i in 1..=2 {
-            let res = queue.put((i % 256) as u8);
-            write_test_result(writer, res.is_ok(), "should be able to fill queue");
-        }
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
-        for i in 1..=2 {
+            // for i in 1..queue.queue_len goes from 1 to (queue.queue_len - 1) inclusive
+            // So, if queue.queue_len is 4, this iterates through [1, 2, 3]
+            for i in 1..=2 {
+                let res = queue.put((i % 256) as u8);
+                write_test_result(writer, res.is_ok(), "should be able to fill queue");
+            }
+
+            for i in 1..=2 {
+                let res = queue.get();
+                write_test_result(
+                    writer,
+                    res.unwrap() == ((i % 256) as u8),
+                    "should be able to get filled values ",
+                );
+            }
+
+            for i in 1..=2 {
+                let res = queue.put(i as u8);
+                write_test_result(
+                    writer,
+                    res.is_ok(),
+                    "should be able to put in 2 more values",
+                );
+            }
+
+            for i in 1..=2 {
+                let res = queue.get();
+                write_test_result(
+                    writer,
+                    res.unwrap() == (i as u8),
+                    "should be able to get values",
+                );
+            }
+
+            // The queue should now be empty
             let res = queue.get();
-            write_test_result(
-                writer,
-                res.unwrap() == ((i % 256) as u8),
-                "should be able to get filled values ",
-            );
-        }
+            write_test_result(writer, res.is_err(), "get from empty queue should fail");
 
-        for i in 1..=2 {
-            let res = queue.put(i as u8);
-            write_test_result(
-                writer,
-                res.is_ok(),
-                "should be able to put in 2 more values",
-            );
-        }
+            for i in 1..=3 {
+                let res = queue.put(i as u8);
+                write_test_result(
+                    writer,
+                    res.is_ok(),
+                    "should be able to put in 3 more values",
+                );
+            }
+            queue_handle
+        };
 
-        for i in 1..=2 {
-            let res = queue.get();
-            write_test_result(
-                writer,
-                res.unwrap() == (i as u8),
-                "should be able to get values",
-            );
-        }
-
-        // The queue should now be empty
-        let res = queue.get();
-        write_test_result(writer, res.is_err(), "get from empty queue should fail");
-
-        for i in 1..=3 {
-            let res = queue.put(i as u8);
-            write_test_result(
-                writer,
-                res.is_ok(),
-                "should be able to put in 3 more values",
-            );
-        }
+        free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(Some(handle)) });
     }
 
     /// Test that init with a NULL queue pointer fails
     pub fn test_queue_init_null_queue_fails(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let queue_start_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
-        let len = unsafe { BASINO_QUEUE_DATA.len() };
-        let queue_end_ptr: *mut u8 = (queue_start_ptr as usize + len - 1) as *mut u8;
+        let handle = {
+            let queue_handle =
+                free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
+            let queue_start_ptr = queue_handle.ptr;
+            let len = queue_handle.len;
+            let queue_end_ptr = (queue_start_ptr as usize + len - 1) as *mut u8;
 
-        let res = unsafe {
-            basino_queue_init(
-                core::ptr::null_mut::<u16>() as *mut QueueObj,
-                queue_start_ptr as *mut u8,
-                queue_end_ptr as *mut u8,
-            )
+            let res = unsafe {
+                basino_queue_init(
+                    core::ptr::null_mut::<u16>() as *mut QueueObj,
+                    queue_start_ptr as *mut u8,
+                    queue_end_ptr as *mut u8,
+                )
+            };
+
+            write_test_result(writer, res == 1, "init should fail with null queue pointer");
+            queue_handle
         };
 
-        write_test_result(writer, res == 1, "init should fail with null queue pointer");
+        free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(Some(handle)) });
     }
 
     /// Test that get with a NULL queue pointer fails
@@ -824,91 +944,119 @@ pub mod tests {
     pub fn test_queue_basino_queue_get_last_head_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let queue_start = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
-        let queue_end = (queue_start as usize + unsafe { BASINO_QUEUE_DATA.len() } - 1) as *mut u8;
-        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
-        let mut queue =
-            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
+        let handle = {
+            let queue_handle =
+                free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
+            let queue_start = queue_handle.ptr;
+            let queue_end = (queue_start as usize + (queue_handle.len - 1)) as *mut u8;
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
-        let last_head = queue.get_last_head();
+            let last_head = queue.get_last_head();
 
-        write_test_result(
-            writer,
-            last_head.unwrap() == queue_end,
-            "get_last_head should return correct value",
-        );
+            write_test_result(
+                writer,
+                last_head.unwrap() == queue_end,
+                "get_last_head should return correct value",
+            );
+            queue_handle
+        };
+
+        free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(Some(handle)) });
     }
 
     /// Test that get_last_head works
     pub fn test_queue_basino_queue_get_head_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let queue_start = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
-        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
-        let mut queue =
-            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
+        let handle = {
+            let queue_handle =
+                free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
-        let head = queue.get_head();
+            let queue_start = queue_handle.ptr;
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
-        write_test_result(
-            writer,
-            head.unwrap() == queue_start,
-            "get_head should return correct value",
-        );
+            let head = queue.get_head();
+
+            write_test_result(
+                writer,
+                head.unwrap() == queue_start,
+                "get_head should return correct value",
+            );
+            queue_handle
+        };
+
+        free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(Some(handle)) });
     }
 
     /// Test that get_last_head works
     pub fn test_queue_basino_queue_get_tail_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let queue_start = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
-        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
-        let mut queue =
-            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
+        let handle = {
+            let queue_handle =
+                free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
-        let tail = queue.get_tail();
+            let queue_start = queue_handle.ptr;
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
-        write_test_result(
-            writer,
-            tail.unwrap() == queue_start,
-            "get_tail should return correct value",
-        );
+            let tail = queue.get_tail();
+
+            write_test_result(
+                writer,
+                tail.unwrap() == queue_start,
+                "get_tail should return correct value",
+            );
+            queue_handle
+        };
+
+        free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(Some(handle)) });
     }
 
     /// Test that get_last_head works
     pub fn test_queue_basino_queue_get_queue_start_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let queue_start = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
-        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
-        let mut queue =
-            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
+        let handle = {
+            let queue_handle =
+                free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
 
-        let res = queue.get_start();
+            let queue_start = queue_handle.ptr;
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
-        write_test_result(
-            writer,
-            res.unwrap() == queue_start,
-            "get_start should return correct value",
-        );
+            let res = queue.get_start();
+
+            write_test_result(
+                writer,
+                res.unwrap() == queue_start,
+                "get_start should return correct value",
+            );
+            queue_handle
+        };
+
+        free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(Some(handle)) });
     }
 
     /// Test that get_queue_end works
     pub fn test_queue_basino_queue_get_queue_end_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let queue_start = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
-        let queue_end = (queue_start as usize + unsafe { BASINO_QUEUE_DATA.len() } - 1) as *mut u8;
-        let basino_queue_data_ptr = unsafe { BASINO_QUEUE_DATA.as_mut_ptr() };
-        let mut queue =
-            Queue::new(basino_queue_data_ptr, unsafe { BASINO_QUEUE_DATA.len() }).unwrap();
+        let handle = {
+            let queue_handle =
+                free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(None).unwrap() });
+            let queue_start = queue_handle.ptr;
+            let queue_end = (queue_start as usize + (queue_handle.len - 1)) as *mut u8;
+            let mut queue = Queue::new(&queue_handle).unwrap();
 
-        let res = queue.get_end();
+            let res = queue.get_end();
 
-        write_test_result(
-            writer,
-            res.unwrap() == queue_end,
-            "get_end should return correct value",
-        );
+            write_test_result(
+                writer,
+                res.unwrap() == queue_end,
+                "get_end should return correct value",
+            );
+            queue_handle
+        };
+
+        free(|cs| unsafe { BASINO_QUEUE_DATA_HANDLE.borrow(cs).replace(Some(handle)) });
     }
 }

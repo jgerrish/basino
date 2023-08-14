@@ -5,7 +5,9 @@
 #![feature(abi_avr_interrupt)]
 #![feature(ptr_from_ref)]
 
+use avr_device::interrupt::Mutex;
 use core::{
+    cell::RefCell,
     fmt::{Debug, Formatter},
     marker::PhantomData,
 };
@@ -27,6 +29,58 @@ use crate::il::Interpreter;
 
 /// Create a type alias to simplify function parameters
 pub type Usart = arduino_hal::hal::usart::Usart0<arduino_hal::DefaultClock>;
+
+/// A handle to an array to manage lifetimes and concurrency
+pub struct ArrayHandle<'a, T> {
+    /// Pointer to the array
+    pub ptr: *mut T,
+    /// Length of the array
+
+    /// This is the number of elements the array can hold, not
+    /// necessarily the number of bytes.
+    ///
+    /// For example, for the following array:
+    /// let mut arr: [u8; 4] = [0; 4];
+    /// len would be 4
+    ///
+    /// For the following array:
+    /// let mut arr: [u16; 4] = [0; 4];
+    /// len would also be 4
+    pub len: usize,
+    /// We want to have a lifetime on an ArrayHandle tied to the data
+    pub _marker: PhantomData<&'a T>,
+}
+
+impl<'a, T> ArrayHandle<'a, T> {
+    /// Create a new ArrayHandle from an array pointer and length.
+    ///
+    /// ptr points to an array of data of type T
+    /// len is the length of the array, the number of elements of type
+    /// T it can hold.
+    ///
+    /// # Safety
+    ///
+    /// ptr must point to a valid array.  The ptr must be an array of
+    /// length len.  It is the responsibility of the caller to
+    /// allocate and deallocate this array.  The array must live as
+    /// long as the ArrayHandle.
+    ///
+    /// # Examples
+    ///
+    /// ```
+    /// use crate::ArrayHandle;
+    ///
+    /// let mut arr: [u8; 4] = [0; 4];
+    /// let _handle = ArrayHandle::new(arr.as_mut_ptr(), arr.len());
+    /// ```
+    pub fn new(ptr: *mut T, len: usize) -> Self {
+        ArrayHandle {
+            ptr,
+            len,
+            _marker: PhantomData,
+        }
+    }
+}
 
 // We can only have one link section for the same library file
 // Otherwise it tries to include the library twice, so C externs are
@@ -196,9 +250,6 @@ pub static mut DEVICE_PERIPHERALS_SPACE: u8 = 0;
 // Putting everything into a single structure is correctly allocating the data
 // in the .ram2bss section now, but not in the right location according to our
 // memory.x linker script
-/// The stack object we pass into the C / assembly code to store data
-#[link_section = ".ram2bss"]
-pub static mut BASINO_STACK: Option<Stack> = None;
 
 /// The stack buffer that stores the data C / assembly code to store data
 /// The length of the stack is the length of this buffer minus one.
@@ -209,18 +260,44 @@ pub static mut BASINO_STACK: Option<Stack> = None;
 /// and DS40002198B (AVR® Instruction Set Manual)
 ///
 /// Several unofficial references online make the point that 16-bit
-/// memory accesses are composed of two 8-bit accesses.  Even still, we'll
-/// align two bytes here.  The extra byte is assumed unneeded.
+/// memory accesses are composed of two 8-bit accesses.
 #[link_section = ".ram2bss"]
-pub static mut BASINO_STACK_BUFFER: [u8; 33] = [0; 33];
+static mut BASINO_STACK_BUFFER: [u8; 33] = [0; 33];
+
+/// Handle to wrap the stack array and allow safe management of it
+pub static mut BASINO_STACK_BUFFER_HANDLE: Mutex<RefCell<Option<ArrayHandle<u8>>>> = unsafe {
+    Mutex::new(RefCell::new(Some(ArrayHandle {
+        ptr: BASINO_STACK_BUFFER.as_mut_ptr(),
+        len: BASINO_STACK_BUFFER.len(),
+        _marker: PhantomData,
+    })))
+};
 
 /// The queue object we pass into the C / assembly code to store data
 #[link_section = ".ram2bss"]
-pub static mut BASINO_QUEUE_DATA: [u8; 4] = [0; 4];
+static mut BASINO_QUEUE_DATA: [u8; 4] = [0; 4];
+
+/// Handle to wrap the queue array and allow safe management of it
+pub static mut BASINO_QUEUE_DATA_HANDLE: Mutex<RefCell<Option<ArrayHandle<u8>>>> = unsafe {
+    Mutex::new(RefCell::new(Some(ArrayHandle {
+        ptr: BASINO_QUEUE_DATA.as_mut_ptr(),
+        len: BASINO_QUEUE_DATA.len(),
+        _marker: PhantomData,
+    })))
+};
 
 /// The input queue data
 #[link_section = ".ram2bss"]
 pub static mut BASINO_INPUT_QUEUE_DATA: [u8; 32] = [0; 32];
+
+/// Handle to wrap the input queue array and allow safe management of it
+pub static mut BASINO_INPUT_QUEUE_DATA_HANDLE: Mutex<RefCell<Option<ArrayHandle<u8>>>> = unsafe {
+    Mutex::new(RefCell::new(Some(ArrayHandle {
+        ptr: BASINO_INPUT_QUEUE_DATA.as_mut_ptr(),
+        len: BASINO_INPUT_QUEUE_DATA.len(),
+        _marker: PhantomData,
+    })))
+};
 
 /// The queue object we pass into the C / assembly code to store data
 /// This should be initialized by the code before being used
@@ -254,21 +331,68 @@ extern "C" {
     /// It sets the current top and bottom to those values.
     /// The top is a top sentinel, it should be one above the stack
     /// size.
+    ///
+    /// # Safety
+    ///
+    /// The provided stack must not be a null pointer and must point
+    /// to valid stack structure.  It is the responsiblity of the
+    /// caller to allocate and deallocate the stack structure.
+    ///
+    /// top and bottom must point to valid memory locations.  The
+    /// allocation of the memory is the responsibility of the caller.
+    ///
+    /// top must be greater than the bottom.
     pub fn basino_stack_init(stack: *mut Stack, top: *mut u8, bottom: *mut u8) -> u8;
 
     /// Push a value onto the stack
+    ///
+    /// # Safety
+    ///
+    /// The provided stack must not be a null pointer and must point
+    /// to valid stack structure.  It is the responsiblity of the
+    /// caller to allocate and deallocate the stack structure.
     pub fn basino_stack_push(stack: *const Stack, value: u8) -> u8;
 
     /// Pop a value from the stack
+    ///
+    /// # Safety
+    ///
+    /// The provided stack must not be a null pointer and must point
+    /// to valid stack structure.  It is the responsiblity of the
+    /// caller to allocate and deallocate the stack structure.
+    ///
+    /// Result must point to valid memory that is used to store the
+    /// result.
+    ///
+    /// It is the resposiblity of the caller to allocate and
+    /// deallocate that memory.
     pub fn basino_stack_pop(stack: *const Stack, result: *mut u8) -> u8;
 
     /// Get the address of the bottom of the stack
+    ///
+    /// # Safety
+    ///
+    /// The provided stack must not be a null pointer and must point
+    /// to valid stack structure.  It is the responsiblity of the
+    /// caller to allocate and deallocate the stack structure.
     pub fn basino_get_basino_stack_bottom(stack: *const Stack) -> *const u8;
 
     /// Get the address of the top of the stack
+    ///
+    /// # Safety
+    ///
+    /// The provided stack must not be a null pointer and must point
+    /// to valid stack structure.  It is the responsiblity of the
+    /// caller to allocate and deallocate the stack structure.
     pub fn basino_get_basino_stack_top(stack: *const Stack) -> *const u8;
 
     /// Get the address of the top of the stack sentinitel
+    ///
+    /// # Safety
+    ///
+    /// The provided stack must not be a null pointer and must point
+    /// to valid stack structure.  It is the responsiblity of the
+    /// caller to allocate and deallocate the stack structure.
     pub fn basino_get_basino_stack_top_sentinel(stack: *const Stack) -> *const u8;
 
     // /// Get the stack size
