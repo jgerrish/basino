@@ -1,4 +1,4 @@
-all: basino nim rust
+all: basino rust #nim rust
 
 clean:
 	cd basino && make clean && cd .. && cd rust-basino && cargo clean && cd .. && cd basino_atmega328p && rm -f basino_atmega328p && cd ..
@@ -13,3 +13,7 @@ rust:
 nim:
 	make -C basino
 	cd basino_atmega328p && ln -sf ../basino/libbasino.a . && ratel build && cd ..
+
+test:
+	make -C basino
+	cd rust-basino && cargo run -r --features test-base,test-stack,test-queue && cd ..

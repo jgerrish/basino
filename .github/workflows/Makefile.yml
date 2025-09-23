@@ -1,0 +1,19 @@
+name: Makefile
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Install dependencies
+      run: sudo apt-get install -y simavr arduino-core-avr avr-libc avrdude avrdude-doc binutils-avr gcc-avr gdb-avr make
+    - name: Run tests
+      run: make test 2>&1 | ( ! grep "FAILURE" )
