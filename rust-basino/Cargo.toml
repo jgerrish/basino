@@ -24,19 +24,20 @@ features = ["arduino-uno"]
 git = "https://github.com/jgerrish/avr-hal"
 
 [dependencies.avr-device]
-version = "0.5"
+version = "0.7"
 features = ["atmega328p"]
 
 # Configure the build for minimal size - AVRs have very little program memory
 [profile.dev]
 panic = "abort"
+debug = true
 lto = true
 opt-level = "s"
 
 [profile.release]
 panic = "abort"
 codegen-units = 1
-debug = true
+debug = false
 lto = true
 opt-level = "s"
 
@@ -53,6 +54,6 @@ test-queue = []
 test-stack = []
 
 # default = ["test-base", "test-stack"]
-default = ["test-base", "test-queue"]
-# default = ["test-base"]
+# default = ["test-base", "test-stack", "test-queue"]
+default = ["test-base"]
 features = []

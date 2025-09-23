@@ -5,20 +5,46 @@ rustflags = [
   # "-C", "linker=avr-gcc",
   # "-C", "link-arg=-Wl,-Tlink.x",
   # "-C", "link-arg=-nostartfiles",
-  "-C", "linker=avr-gcc",
+#  "-C", "linker=avr-gcc",
   "-C", "link-arg=-Wl,-L../basino",
+#  "-C", "linker-features=-lld",
+  "-C", "target-cpu=atmega328p",
+#  "-Z", "unstable-options"
 ]
 
+
+
 [build]
-target = "avr-specs/avr-atmega328p.json"
+# target = "avr-specs/avr-atmega328p.json"
+target = "avr-none"
+rustflags = [
+  "-C", "link-arg=-Wl,-L../basino",
+  "-C", "target-cpu=atmega328p"
+]
+
+# rustflags = ["-C", "target-cpu=atmega328p",
+# 	  "-C", "linker-features=-lld"
+# ]
 
 [target.'cfg(target_arch = "avr")']
+# ravedude to upload the code to real hardware
 # runner = "ravedude uno -cb 57600"
+
+# simavr debugging waiting for gdb on port 1234
 # runner = "simavr -g --mcu atmega328p"
+
+# Normal simavr run without gdb
 runner = "simavr --mcu atmega328p"
+
+# run_avr is part of the simavr-sim crate to interact with simavr
 # runner = "run_avr --mcu atmega328p"
 # runner = "run_avr --mcu atmega328p"
+
+# qemu with gdb debugging listening on port 1234
+# -S pauses the CPU on startup
 # runner = "qemu-system-avr -s -S -M uno -nographic -chardev stdio,mux=on,id=char0 -mon chardev=char0,mode=readline -serial chardev:char0 -bios "
+
+# qemu without gdb debugging
 # runner = "qemu-system-avr -M uno -nographic -chardev stdio,mux=on,id=char0 -mon chardev=char0,mode=readline -serial chardev:char0 -bios "
 
 [unstable]

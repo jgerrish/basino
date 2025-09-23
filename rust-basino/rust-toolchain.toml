@@ -1,4 +1,5 @@
 [toolchain]
-channel = "nightly-2023-01-10"
+# Use the same toolchain as the upstream avr-hal crate
+channel = "nightly-2025-04-27"
 components = ["rust-src"]
 profile = "minimal"
