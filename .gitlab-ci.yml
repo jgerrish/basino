@@ -1,0 +1,131 @@
+# This GitLab CI script is based on the mortgage calculator example
+# from GitLab:
+# https://gitlab.com/gitlab-da/tutorials/security-and-governance/devsecops/rust/mortgage-calculator.git
+#
+stages:
+  - build
+  - test
+
+workflow:
+  rules:
+    - if: $CI_PIPELINE_SOURCE == "push"
+
+variables:
+  RUST_VERSION: "1.88"
+  CARGO_HOME: "$CI_PROJECT_DIR/rust-basino/.cargo"
+  CARGO_INCREMENTAL: 0
+  DS_MAX_DEPTH: -1
+
+cache:
+  key: $CI_COMMIT_REF_SLUG
+  paths:
+    - rust-basino/.cargo/
+    - rust-basino/target/
+
+include:
+  - template: Jobs/SAST.gitlab-ci.yml
+  - template: Jobs/Dependency-Scanning.latest.gitlab-ci.yml
+  - template: Jobs/SAST-IaC.gitlab-ci.yml
+  - template: Jobs/Secret-Detection.gitlab-ci.yml
+
+.rust-template:
+  image: rust:$RUST_VERSION-slim
+  before_script:
+    - apt-get update && apt-get install -y simavr arduino-core-avr avr-libc avrdude avrdude-doc binutils-avr gcc-avr gdb-avr make
+
+.build-template:
+  extends: .rust-template
+  stage: build
+  script:
+    - make -C basino
+    - cd rust-basino
+    # - rustup target add $TARGET
+    - cargo build --release --features test-base,test-stack,test-queue
+    - cd ..
+
+build-linux:
+  extends: .build-template
+  variables:
+    TARGET: avr-none
+  artifacts:
+    paths:
+      - rust-basino/target/$TARGET/release/basino
+    expire_in: 1 week
+  allow_failure: false
+
+build-windows:
+  extends: .build-template
+  variables:
+    TARGET: avr-none
+  artifacts:
+    paths:
+      - rust-basino/target/$TARGET/release/basino
+    expire_in: 1 week
+  allow_failure: true
+
+build-macos:
+  extends: .build-template
+  variables:
+    TARGET: avr-none
+  artifacts:
+    paths:
+      - rust-basino/target/$TARGET/release/basino
+    expire_in: 1 week
+  allow_failure: true
+
+build-documentation:
+  extends: .rust-template
+  stage: build
+  variables:
+    TARGET: avr-none
+    GIT_SUBMODULE_STRATEGY: recursive
+#  pages: true
+  script:
+    - make -C basino
+    - cd rust-basino
+    - cargo doc --no-deps
+    - mv target/$TARGET/doc public
+  artifacts:
+    paths:
+      - public
+  rules:
+    - if: $CI_COMMIT_REF_NAME == $CI_DEFAULT_BRANCH
+  environment:
+    name: documentation
+    url: $CI_PAGES_URL/basino/index.html
+  allow_failure: true
+
+test:unit:
+  extends: .rust-template
+  stage: test
+  script:
+    - make test 2>&1 | ( ! grep "FAILURE" )
+#    - cargo test --verbose
+
+test:clippy:
+  extends: .rust-template
+  stage: test
+  script:
+    - make -C basino
+    - cd rust-basino
+    - rustup component add clippy
+    - cargo clippy -- -D warnings
+  allow_failure: true
+
+test:format:
+  extends: .rust-template
+  stage: test
+  script:
+    - make -C basino
+    - cd rust-basino
+    - rustup component add rustfmt
+    - cargo fmt -- --check
+  allow_failure: true
+
+semgrep-sast:
+  rules:
+    - if: $CI_COMMIT_BRANCH
+      exists:
+        - "rust-basino/**/*.rs"
+  variables:
+    SAST_EXCLUDED_PATHS: "rust-basino/.cargo/**"
