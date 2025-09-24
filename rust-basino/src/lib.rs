@@ -3,10 +3,9 @@
 #![no_std]
 #![no_main]
 #![feature(abi_avr_interrupt)]
-#![feature(ptr_from_ref)]
 
 use avr_device::interrupt::Mutex;
-use core::{cell::RefCell, marker::PhantomData};
+use core::{cell::Cell, marker::PhantomData};
 use ufmt::{uDebug, uWrite};
 
 /// Error data types
@@ -201,29 +200,15 @@ pub static mut DEVICE_PERIPHERALS_SPACE: u8 = 0;
 /// Several unofficial references online make the point that 16-bit
 /// memory accesses are composed of two 8-bit accesses.
 #[link_section = ".ram2bss"]
-static mut BASINO_STACK_BUFFER: [u8; 33] = [0; 33];
-
-/// Handle to wrap the stack array and allow safe management of it
-pub static mut BASINO_STACK_BUFFER_HANDLE: Mutex<RefCell<Option<ArrayHandle<u8>>>> = unsafe {
-    Mutex::new(RefCell::new(Some(ArrayHandle {
-        ptr: BASINO_STACK_BUFFER.as_mut_ptr(),
-        len: BASINO_STACK_BUFFER.len(),
-        _marker: PhantomData,
-    })))
-};
+// TODO: Review where information in a cell gets allocated when
+// it has a link_section attribute.
+// Is every component including the Mutex and structures under it put
+// in sequential memory?
+static BASINO_STACK_BUFFER: Mutex<Cell<[u8; 33]>> = Mutex::new(Cell::new([0; 33]));
 
 /// The queue object we pass into the C / assembly code to store data
 #[link_section = ".ram2bss"]
-static mut BASINO_QUEUE_DATA: [u8; 4] = [0; 4];
-
-/// Handle to wrap the stack array and allow safe management of it
-pub static mut BASINO_QUEUE_DATA_HANDLE: Mutex<RefCell<Option<ArrayHandle<u8>>>> = unsafe {
-    Mutex::new(RefCell::new(Some(ArrayHandle {
-        ptr: BASINO_QUEUE_DATA.as_mut_ptr(),
-        len: BASINO_QUEUE_DATA.len(),
-        _marker: PhantomData,
-    })))
-};
+static BASINO_QUEUE_DATA: Mutex<Cell<[u8; 4]>> = Mutex::new(Cell::new([0; 4]));
 
 #[link(name = "basino")]
 extern "C" {

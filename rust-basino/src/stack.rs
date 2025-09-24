@@ -6,6 +6,21 @@
 //! This crate owns the Struct object, it passes in pointers to the
 //! assembly code.
 #![warn(missing_docs)]
+// This clippy warning actually points to a design decision that was
+// made in this project.  We aren't wrapping the data structures in
+// smart Rust pointers and data structures.
+//
+// It could be refactored to use smarter structures.  But the idea
+// with this project was:
+//
+// 1) To learn AVR assembly and the basics of the hardware
+// 2) To allow easy testing with Rust
+//
+// I am leaving this in here as a reminder and a branch point for
+// anyone interested in picking up the refactor.  This project and
+// others allowed me to learn about sleep modes and other
+// AVR features that were useful to me.
+#![allow(clippy::ptr_eq)]
 
 use core::marker::PhantomData;
 
@@ -117,9 +132,9 @@ impl<'a> StackImpl<'a> for Stack<'a> {
 
         let res = unsafe {
             basino_stack_init(
-                core::ptr::addr_of_mut!(stack) as *mut Stack,
-                stack_top_ptr as *mut u8,
-                stack_bottom_ptr as *mut u8,
+                core::ptr::addr_of_mut!(stack),
+                stack_top_ptr,
+                stack_bottom_ptr,
             )
         };
 
@@ -133,8 +148,7 @@ impl<'a> StackImpl<'a> for Stack<'a> {
 
     fn pop(&mut self) -> Result<u8, Error> {
         let mut result: u8 = 0;
-        let res =
-            unsafe { basino_stack_pop(core::ptr::addr_of_mut!(*self) as *mut Stack, &mut result) };
+        let res = unsafe { basino_stack_pop(core::ptr::addr_of_mut!(*self), &mut result) };
         match result {
             0 => Ok(res),
             1 => Err(Error::new(ErrorKind::NullPointer)),
@@ -144,7 +158,7 @@ impl<'a> StackImpl<'a> for Stack<'a> {
     }
 
     fn push(&mut self, value: u8) -> Result<(), Error> {
-        let res = unsafe { basino_stack_push(core::ptr::addr_of_mut!(*self) as *mut Stack, value) };
+        let res = unsafe { basino_stack_push(core::ptr::addr_of_mut!(*self), value) };
         match res {
             0 => Ok(()),
             1 => Err(Error::new(ErrorKind::NullPointer)),
@@ -161,10 +175,8 @@ impl<'a> StackImpl<'a> for Stack<'a> {
     /// as separate chunks and access is translated by Rust.
     fn size(&mut self) -> u16 {
         unsafe {
-            basino_get_basino_stack_top_sentinel(core::ptr::addr_of_mut!(*self) as *mut Stack)
-                as u16
-                - basino_get_basino_stack_bottom(core::ptr::addr_of_mut!(*self) as *mut Stack)
-                    as u16
+            basino_get_basino_stack_top_sentinel(core::ptr::addr_of_mut!(*self)) as u16
+                - basino_get_basino_stack_bottom(core::ptr::addr_of_mut!(*self)) as u16
         }
     }
 }
@@ -173,18 +185,14 @@ impl<'a> Stack<'a> {
     /// Print a bunch of debugging information about the stack
     #[allow(dead_code)]
     fn debug_print(&mut self, writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) {
-        let res =
-            unsafe { basino_get_basino_stack_bottom(core::ptr::addr_of_mut!(*self) as *mut Stack) };
+        let res = unsafe { basino_get_basino_stack_bottom(core::ptr::addr_of_mut!(*self)) };
 
         ufmt::uwriteln!(writer, "basino_get_basino_stack_bottom result: {:?}\r", res).unwrap();
 
-        let res =
-            unsafe { basino_get_basino_stack_top(core::ptr::addr_of_mut!(*self) as *mut Stack) };
+        let res = unsafe { basino_get_basino_stack_top(core::ptr::addr_of_mut!(*self)) };
         ufmt::uwriteln!(writer, "basino_get_basino_stack_top result: {:?}\r", res).unwrap();
 
-        let res = unsafe {
-            basino_get_basino_stack_top_sentinel(core::ptr::addr_of_mut!(*self) as *mut Stack)
-        };
+        let res = unsafe { basino_get_basino_stack_top_sentinel(core::ptr::addr_of_mut!(*self)) };
         ufmt::uwriteln!(
             writer,
             "basino_get_basino_stack_top_sentinel result: {:?}\r",
@@ -207,7 +215,7 @@ pub mod tests {
         basino_get_basino_stack_bottom, basino_get_basino_stack_top,
         basino_get_basino_stack_top_sentinel, basino_stack_init, basino_stack_pop,
         basino_stack_push, error::Error, error::ErrorKind, stack::StackImpl,
-        tests::write_test_result, Stack, BASINO_STACK_BUFFER_HANDLE,
+        tests::write_test_result, ArrayHandle, Stack, BASINO_STACK_BUFFER,
     };
 
     use avr_device::interrupt::free;
@@ -259,24 +267,24 @@ pub mod tests {
 
     /// Test that initializing the stack works
     pub fn test_stack_new_works(writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) {
-        let rsh = {
-            let stack_handle =
-                free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
+        free(|cs| {
+            let mut stack_handle = BASINO_STACK_BUFFER.borrow(cs).get();
 
-            let mut stack = Stack::new(&stack_handle).unwrap();
+            let ah = ArrayHandle::new(stack_handle.as_mut_ptr(), stack_handle.len());
 
-            let expected_size = stack_handle.len - 1;
+            let mut stack = Stack::new(&ah).unwrap();
+
+            let expected_size = ah.len - 1;
             let size = stack.size();
 
-            let expected_bottom: *mut u8 = stack_handle.ptr;
+            let expected_bottom: *mut u8 = ah.ptr;
             let bottom = unsafe { basino_get_basino_stack_bottom(&stack) };
 
-            let expected_top: *mut u8 = (stack_handle.ptr as usize + expected_size) as *mut u8;
+            let expected_top: *mut u8 = (ah.ptr as usize + expected_size) as *mut u8;
 
             let top = unsafe { basino_get_basino_stack_top(&stack) };
 
-            let expected_top_sentinel: *mut u8 =
-                (stack_handle.ptr as usize + expected_size) as *mut u8;
+            let expected_top_sentinel: *mut u8 = (ah.ptr as usize + expected_size) as *mut u8;
             let top_sentinel = unsafe { basino_get_basino_stack_top_sentinel(&stack) };
 
             write_test_result(
@@ -302,20 +310,17 @@ pub mod tests {
                 size == expected_size as u16,
                 "initialized stack should have the correct size",
             );
-
-            stack_handle
-        };
-
-        free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(Some(rsh)) });
+        });
     }
 
     /// Test that pushing a value on the stack works
     pub fn test_stack_push_works(writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) {
-        let rsh = {
-            let stack_handle =
-                free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
+        free(|cs| {
+            let mut stack_handle = BASINO_STACK_BUFFER.borrow(cs).get();
 
-            let mut stack = Stack::new(&stack_handle).unwrap();
+            let ah = ArrayHandle::new(stack_handle.as_mut_ptr(), stack_handle.len());
+
+            let mut stack = Stack::new(&ah).unwrap();
 
             let res = stack.push(5);
             write_test_result(writer, res.is_ok(), "should be able to push value");
@@ -327,21 +332,19 @@ pub mod tests {
                 res.unwrap() == 5,
                 "popped value should equal pushed value",
             );
-            stack_handle
-        };
-
-        free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(Some(rsh)) });
+        });
     }
 
     /// Test that popping a value from an empty stack fails
     pub fn test_stack_empty_pop_fails(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let rsh = {
-            let stack_handle =
-                free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
+        free(|cs| {
+            let mut stack_handle = BASINO_STACK_BUFFER.borrow(cs).get();
 
-            let mut stack = Stack::new(&stack_handle).unwrap();
+            let ah = ArrayHandle::new(stack_handle.as_mut_ptr(), stack_handle.len());
+
+            let mut stack = Stack::new(&ah).unwrap();
 
             let res = stack.pop();
 
@@ -350,21 +353,19 @@ pub mod tests {
                 res.is_err(),
                 "shouldn't be able to pop value from empty stack",
             );
-            stack_handle
-        };
-
-        free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(Some(rsh)) });
+        });
     }
 
     /// Test that pushing into a full stack fails
     pub fn test_stack_push_full_stack_fails(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let rsh = {
-            let stack_handle =
-                free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
+        free(|cs| {
+            let mut stack_handle = BASINO_STACK_BUFFER.borrow(cs).get();
 
-            let mut stack = Stack::new(&stack_handle).unwrap();
+            let ah = ArrayHandle::new(stack_handle.as_mut_ptr(), stack_handle.len());
+
+            let mut stack = Stack::new(&ah).unwrap();
 
             for i in 0..stack.size() {
                 let n = (i % 255) as u8;
@@ -391,21 +392,19 @@ pub mod tests {
                     );
                 }
             }
-            stack_handle
-        };
-
-        free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(Some(rsh)) });
+        });
     }
 
     /// Test that creating a full stack and popping all the values succeeds
     pub fn test_stack_push_full_stack_pop_full_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let rsh = {
-            let stack_handle =
-                free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
+        free(|cs| {
+            let mut stack_handle = BASINO_STACK_BUFFER.borrow(cs).get();
 
-            let mut stack = Stack::new(&stack_handle).unwrap();
+            let ah = ArrayHandle::new(stack_handle.as_mut_ptr(), stack_handle.len());
+
+            let mut stack = Stack::new(&ah).unwrap();
 
             for i in 0..stack.size() {
                 let n = (i % 256) as u8;
@@ -463,51 +462,46 @@ pub mod tests {
                     );
                 }
             }
-            stack_handle
-        };
-
-        free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(Some(rsh)) });
+        });
     }
 
     /// Test that init with a NULL stack pointer fails
     pub fn test_stack_init_null_stack_fails(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let rsh = {
-            let stack_handle =
-                free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
+        free(|cs| {
+            let mut stack_handle = BASINO_STACK_BUFFER.borrow(cs).get();
 
-            let stack_bottom_ptr = stack_handle.ptr;
-            let len = stack_handle.len - 1;
+            let ah = ArrayHandle::new(stack_handle.as_mut_ptr(), stack_handle.len());
+
+            let stack_bottom_ptr = ah.ptr;
+            let len = ah.len - 1;
 
             let stack_top_ptr: *mut u8 = (stack_bottom_ptr as usize + len) as *mut u8;
 
             let res = unsafe {
                 basino_stack_init(
                     core::ptr::null_mut::<u16>() as *mut Stack,
-                    stack_top_ptr as *mut u8,
-                    stack_bottom_ptr as *mut u8,
+                    stack_top_ptr,
+                    stack_bottom_ptr,
                 )
             };
 
             write_test_result(writer, res == 1, "init should fail with null stack pointer");
-
-            stack_handle
-        };
-
-        free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(Some(rsh)) });
+        });
     }
 
     /// Test that init with bottom greater than top fails
     pub fn test_stack_init_bottom_gt_top_fails(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let rsh = {
-            let stack_handle =
-                free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
+        free(|cs| {
+            let mut stack_handle = BASINO_STACK_BUFFER.borrow(cs).get();
 
-            let stack_bottom_ptr = stack_handle.ptr;
-            let stack_top_ptr = (stack_handle.ptr as usize - 1) as *mut u8;
+            let ah = ArrayHandle::new(stack_handle.as_mut_ptr(), stack_handle.len());
+
+            let stack_bottom_ptr = ah.ptr;
+            let stack_top_ptr = (ah.ptr as usize - 1) as *mut u8;
 
             let mut stack = Stack {
                 data: core::ptr::null_mut::<u8>(),
@@ -519,9 +513,9 @@ pub mod tests {
 
             let res = unsafe {
                 basino_stack_init(
-                    core::ptr::addr_of_mut!(stack) as *mut Stack,
-                    stack_top_ptr as *mut u8,
-                    stack_bottom_ptr as *mut u8,
+                    core::ptr::addr_of_mut!(stack),
+                    stack_top_ptr,
+                    stack_bottom_ptr,
                 )
             };
 
@@ -530,22 +524,19 @@ pub mod tests {
                 res == 2,
                 "init should fail with bottom greater than top",
             );
-
-            stack_handle
-        };
-
-        free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(Some(rsh)) });
+        });
     }
 
     /// Test that init with bottom equal to top fails
     pub fn test_stack_init_bottom_eq_top_fails(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let rsh = {
-            let stack_handle =
-                free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
+        free(|cs| {
+            let mut stack_handle = BASINO_STACK_BUFFER.borrow(cs).get();
 
-            let stack_bottom_ptr = stack_handle.ptr;
+            let ah = ArrayHandle::new(stack_handle.as_mut_ptr(), stack_handle.len());
+
+            let stack_bottom_ptr = ah.ptr;
             let stack_top_ptr: *mut u8 = stack_bottom_ptr;
 
             let mut stack = Stack {
@@ -558,9 +549,9 @@ pub mod tests {
 
             let res = unsafe {
                 basino_stack_init(
-                    core::ptr::addr_of_mut!(stack) as *mut Stack,
-                    stack_top_ptr as *mut u8,
-                    stack_bottom_ptr as *mut u8,
+                    core::ptr::addr_of_mut!(stack),
+                    stack_top_ptr,
+                    stack_bottom_ptr,
                 )
             };
 
@@ -569,23 +560,20 @@ pub mod tests {
                 res == 2,
                 "init should fail with bottom equal to top",
             );
-
-            stack_handle
-        };
-
-        free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(Some(rsh)) });
+        });
     }
 
     /// Test that init with bottom equal to top fails
     pub fn test_stack_init_bottom_one_lt_top_works(
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
-        let rsh = {
-            let stack_handle =
-                free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(None).unwrap() });
+        free(|cs| {
+            let mut stack_handle = BASINO_STACK_BUFFER.borrow(cs).get();
 
-            let stack_bottom_ptr = stack_handle.ptr;
-            let stack_top_ptr = (stack_handle.ptr as usize + 1) as *mut u8;
+            let ah = ArrayHandle::new(stack_handle.as_mut_ptr(), stack_handle.len());
+
+            let stack_bottom_ptr = ah.ptr;
+            let stack_top_ptr = (ah.ptr as usize + 1) as *mut u8;
 
             let mut stack = Stack {
                 data: core::ptr::null_mut::<u8>(),
@@ -597,9 +585,9 @@ pub mod tests {
 
             let res = unsafe {
                 basino_stack_init(
-                    core::ptr::addr_of_mut!(stack) as *mut Stack,
-                    stack_top_ptr as *mut u8,
-                    stack_bottom_ptr as *mut u8,
+                    core::ptr::addr_of_mut!(stack),
+                    stack_top_ptr,
+                    stack_bottom_ptr,
                 )
             };
 
@@ -608,11 +596,7 @@ pub mod tests {
                 res == 0,
                 "init should work with bottom one less than top",
             );
-
-            stack_handle
-        };
-
-        free(|cs| unsafe { BASINO_STACK_BUFFER_HANDLE.borrow(cs).replace(Some(rsh)) });
+        });
     }
 
     /// Test that subtraction code and dealing with multi-byte values
@@ -630,7 +614,7 @@ pub mod tests {
 
         let res = unsafe {
             basino_stack_init(
-                core::ptr::addr_of_mut!(stack) as *mut Stack,
+                core::ptr::addr_of_mut!(stack),
                 0x2343 as *mut u8,
                 0x0050 as *mut u8,
             )
