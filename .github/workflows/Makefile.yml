@@ -17,3 +17,19 @@ jobs:
       run: sudo apt-get install -y simavr arduino-core-avr avr-libc avrdude avrdude-doc binutils-avr gcc-avr gdb-avr make
     - name: Run tests
       run: make test 2>&1 | ( ! grep "FAILURE" )
+
+  clippy_check:
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v5
+      - name: Install dependencies
+        run: sudo apt-get install -y simavr arduino-core-avr avr-libc avrdude avrdude-doc binutils-avr gcc-avr gdb-avr make
+      - name: Run Clippy
+        run: |
+          make -C basino
+          cd rust-basino
+          # "cargo clippy" doesn't work but cargo-clippy does
+          # cargo clippy --all-targets --all-features
+          cargo-clippy --all-targets --all-features

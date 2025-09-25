@@ -1,5 +1,5 @@
 [toolchain]
 # Use the same toolchain as the upstream avr-hal crate
 channel = "nightly-2025-04-27"
-components = ["rust-src"]
+components = ["clippy", "rustfmt", "rust-src"]
 profile = "minimal"
