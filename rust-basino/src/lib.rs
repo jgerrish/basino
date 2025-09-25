@@ -5,7 +5,7 @@
 #![feature(abi_avr_interrupt)]
 
 use avr_device::interrupt::Mutex;
-use core::{cell::Cell, marker::PhantomData};
+use core::{cell::RefCell, marker::PhantomData};
 use ufmt::{uDebug, uWrite};
 
 /// Error data types
@@ -179,7 +179,7 @@ pub static mut BASINO_STACK_FILLER: u8 = 1;
 /// in the same location as DEVICE_PERIPHERALS from the avr-device
 /// crate.
 ///
-/// Add the #[used] attribute to keep this static even if it's not
+/// Add the `#[used]` attribute to keep this static even if it's not
 /// used in the program.
 #[link_section = ".ram2bss"]
 #[used]
@@ -204,11 +204,11 @@ pub static mut DEVICE_PERIPHERALS_SPACE: u8 = 0;
 // it has a link_section attribute.
 // Is every component including the Mutex and structures under it put
 // in sequential memory?
-static BASINO_STACK_BUFFER: Mutex<Cell<[u8; 33]>> = Mutex::new(Cell::new([0; 33]));
+static BASINO_STACK_BUFFER: Mutex<RefCell<[u8; 33]>> = Mutex::new(RefCell::new([0; 33]));
 
 /// The queue object we pass into the C / assembly code to store data
 #[link_section = ".ram2bss"]
-static BASINO_QUEUE_DATA: Mutex<Cell<[u8; 4]>> = Mutex::new(Cell::new([0; 4]));
+static BASINO_QUEUE_DATA: Mutex<RefCell<[u8; 4]>> = Mutex::new(RefCell::new([0; 4]));
 
 #[link(name = "basino")]
 extern "C" {

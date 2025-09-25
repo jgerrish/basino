@@ -268,7 +268,7 @@ pub mod tests {
     /// Test that initializing the stack works
     pub fn test_stack_new_works(writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) {
         free(|cs| {
-            let mut stack_handle = BASINO_STACK_BUFFER.borrow(cs).get();
+            let mut stack_handle = BASINO_STACK_BUFFER.borrow(cs).borrow_mut();
 
             let ah = ArrayHandle::new(stack_handle.as_mut_ptr(), stack_handle.len());
 
@@ -316,7 +316,7 @@ pub mod tests {
     /// Test that pushing a value on the stack works
     pub fn test_stack_push_works(writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) {
         free(|cs| {
-            let mut stack_handle = BASINO_STACK_BUFFER.borrow(cs).get();
+            let mut stack_handle = BASINO_STACK_BUFFER.borrow(cs).borrow_mut();
 
             let ah = ArrayHandle::new(stack_handle.as_mut_ptr(), stack_handle.len());
 
@@ -340,7 +340,7 @@ pub mod tests {
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
         free(|cs| {
-            let mut stack_handle = BASINO_STACK_BUFFER.borrow(cs).get();
+            let mut stack_handle = BASINO_STACK_BUFFER.borrow(cs).borrow_mut();
 
             let ah = ArrayHandle::new(stack_handle.as_mut_ptr(), stack_handle.len());
 
@@ -361,7 +361,7 @@ pub mod tests {
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
         free(|cs| {
-            let mut stack_handle = BASINO_STACK_BUFFER.borrow(cs).get();
+            let mut stack_handle = BASINO_STACK_BUFFER.borrow(cs).borrow_mut();
 
             let ah = ArrayHandle::new(stack_handle.as_mut_ptr(), stack_handle.len());
 
@@ -400,7 +400,7 @@ pub mod tests {
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
         free(|cs| {
-            let mut stack_handle = BASINO_STACK_BUFFER.borrow(cs).get();
+            let mut stack_handle = BASINO_STACK_BUFFER.borrow(cs).borrow_mut();
 
             let ah = ArrayHandle::new(stack_handle.as_mut_ptr(), stack_handle.len());
 
@@ -470,7 +470,7 @@ pub mod tests {
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
         free(|cs| {
-            let mut stack_handle = BASINO_STACK_BUFFER.borrow(cs).get();
+            let mut stack_handle = BASINO_STACK_BUFFER.borrow(cs).borrow_mut();
 
             let ah = ArrayHandle::new(stack_handle.as_mut_ptr(), stack_handle.len());
 
@@ -496,7 +496,7 @@ pub mod tests {
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
         free(|cs| {
-            let mut stack_handle = BASINO_STACK_BUFFER.borrow(cs).get();
+            let mut stack_handle = BASINO_STACK_BUFFER.borrow(cs).borrow_mut();
 
             let ah = ArrayHandle::new(stack_handle.as_mut_ptr(), stack_handle.len());
 
@@ -532,7 +532,7 @@ pub mod tests {
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
         free(|cs| {
-            let mut stack_handle = BASINO_STACK_BUFFER.borrow(cs).get();
+            let mut stack_handle = BASINO_STACK_BUFFER.borrow(cs).borrow_mut();
 
             let ah = ArrayHandle::new(stack_handle.as_mut_ptr(), stack_handle.len());
 
@@ -568,7 +568,7 @@ pub mod tests {
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
         free(|cs| {
-            let mut stack_handle = BASINO_STACK_BUFFER.borrow(cs).get();
+            let mut stack_handle = BASINO_STACK_BUFFER.borrow(cs).borrow_mut();
 
             let ah = ArrayHandle::new(stack_handle.as_mut_ptr(), stack_handle.len());
 

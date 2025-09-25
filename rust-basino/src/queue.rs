@@ -362,7 +362,7 @@ pub mod tests {
     /// Test that initializing the queue works
     pub fn test_queue_init_works(writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) {
         free(|cs| {
-            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).get();
+            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).borrow_mut();
 
             let ah = ArrayHandle::new(queue_handle.as_mut_ptr(), queue_handle.len());
 
@@ -377,7 +377,7 @@ pub mod tests {
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
         free(|cs| {
-            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).get();
+            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).borrow_mut();
 
             let ah = ArrayHandle::new(queue_handle.as_mut_ptr(), queue_handle.len());
 
@@ -391,7 +391,7 @@ pub mod tests {
     /// Test that putting an item into the queue works
     pub fn test_queue_put_works(writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>) {
         free(|cs| {
-            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).get();
+            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).borrow_mut();
 
             let ah = ArrayHandle::new(queue_handle.as_mut_ptr(), queue_handle.len());
 
@@ -421,7 +421,7 @@ pub mod tests {
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
         free(|cs| {
-            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).get();
+            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).borrow_mut();
 
             let ah = ArrayHandle::new(queue_handle.as_mut_ptr(), queue_handle.len());
 
@@ -466,7 +466,7 @@ pub mod tests {
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
         free(|cs| {
-            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).get();
+            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).borrow_mut();
 
             let ah = ArrayHandle::new(queue_handle.as_mut_ptr(), queue_handle.len());
 
@@ -499,7 +499,7 @@ pub mod tests {
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
         free(|cs| {
-            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).get();
+            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).borrow_mut();
 
             let ah = ArrayHandle::new(queue_handle.as_mut_ptr(), queue_handle.len());
 
@@ -526,7 +526,7 @@ pub mod tests {
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
         free(|cs| {
-            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).get();
+            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).borrow_mut();
 
             let ah = ArrayHandle::new(queue_handle.as_mut_ptr(), queue_handle.len());
 
@@ -554,7 +554,7 @@ pub mod tests {
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
         free(|cs| {
-            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).get();
+            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).borrow_mut();
 
             let ah = ArrayHandle::new(queue_handle.as_mut_ptr(), queue_handle.len());
 
@@ -604,7 +604,7 @@ pub mod tests {
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
         free(|cs| {
-            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).get();
+            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).borrow_mut();
 
             let ah = ArrayHandle::new(queue_handle.as_mut_ptr(), queue_handle.len());
 
@@ -656,7 +656,7 @@ pub mod tests {
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
         free(|cs| {
-            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).get();
+            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).borrow_mut();
 
             let ah = ArrayHandle::new(queue_handle.as_mut_ptr(), queue_handle.len());
 
@@ -708,7 +708,7 @@ pub mod tests {
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
         free(|cs| {
-            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).get();
+            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).borrow_mut();
 
             let ah = ArrayHandle::new(queue_handle.as_mut_ptr(), queue_handle.len());
 
@@ -768,7 +768,7 @@ pub mod tests {
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
         free(|cs| {
-            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).get();
+            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).borrow_mut();
 
             let ah = ArrayHandle::new(queue_handle.as_mut_ptr(), queue_handle.len());
 
@@ -925,7 +925,7 @@ pub mod tests {
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
         free(|cs| {
-            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).get();
+            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).borrow_mut();
 
             let ah = ArrayHandle::new(queue_handle.as_mut_ptr(), queue_handle.len());
 
@@ -948,7 +948,7 @@ pub mod tests {
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
         free(|cs| {
-            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).get();
+            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).borrow_mut();
 
             let ah = ArrayHandle::new(queue_handle.as_mut_ptr(), queue_handle.len());
 
@@ -970,7 +970,7 @@ pub mod tests {
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
         free(|cs| {
-            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).get();
+            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).borrow_mut();
 
             let ah = ArrayHandle::new(queue_handle.as_mut_ptr(), queue_handle.len());
 
@@ -992,7 +992,7 @@ pub mod tests {
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
         free(|cs| {
-            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).get();
+            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).borrow_mut();
 
             let ah = ArrayHandle::new(queue_handle.as_mut_ptr(), queue_handle.len());
 
@@ -1014,7 +1014,7 @@ pub mod tests {
         writer: &mut Usart<USART0, Pin<Input, PD0>, Pin<Output, PD1>>,
     ) {
         free(|cs| {
-            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).get();
+            let mut queue_handle = BASINO_QUEUE_DATA.borrow(cs).borrow_mut();
 
             let ah = ArrayHandle::new(queue_handle.as_mut_ptr(), queue_handle.len());
 
